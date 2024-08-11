@@ -1,0 +1,6 @@
+[submodule "SimpleTrack"]
+	path = SimpleTrack
+	url = https://github.com/tusen-ai/SimpleTrack.git
+[submodule "CenterPoint"]
+	path = CenterPoint
+	url = https://github.com/tianweiy/CenterPoint.git
