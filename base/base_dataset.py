@@ -59,7 +59,7 @@ class BaseDataset(Dataset):
             for frame_file in frame_files:
                 with open(frame_file, 'rb') as f:
                     frame_data = pickle.load(f)
-                    frame_data = self._drop_points(frame_data)
+                    # frame_data = self._drop_background(frame_data)
                     frame_data = self._to_torch_tensor(frame_data)
                     frame_data = self._build_bounding_box(frame_data)
                     if self.score_threshold > 0.0:
@@ -110,13 +110,17 @@ class BaseDataset(Dataset):
             det_data_filtered[field_name] = filtered_field
         data['dets'] = det_data_filtered
         return data
+    
+    def _drop_background(self, data):
+
+        indices = []
+        for i, class_label in enumerate(data['dets']['yolo_class']):
+            if class_label != 7:
+                indices.append(i)
         
-    def _drop_points(self, data):
-        '''
-        Drop extra det features
-        '''
-        del data['dets']['points']
-        
+        for item in data['dets']:
+            data['dets'][item] = data['dets'][item][indices]
+
         return data
 
     def _to_torch_tensor(self, data):
@@ -129,9 +133,8 @@ class BaseDataset(Dataset):
         data['dets']['velocity'] = torch.from_numpy(data['dets']['velocity'])
         data['dets']['class'] = torch.from_numpy(data['dets']['class'])
         data['dets']['score'] = torch.from_numpy(data['dets']['score'])
+        data['dets']['yolo_class'] = torch.from_numpy(data['dets']['yolo_class'])
         data['dets']['embedding'] = torch.from_numpy(data['dets']['embedding'])
-        # data['dets']['points'] = torch.from_numpy(data['dets']['points'])
-        # data['dets']['pt_features'] = torch.from_numpy(data['dets']['pt_features'])
     
         data['gts']['translation'] = torch.from_numpy(data['gts']['translation'])
         data['gts']['size'] = torch.from_numpy(data['gts']['size'])

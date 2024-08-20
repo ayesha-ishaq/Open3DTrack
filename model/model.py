@@ -32,6 +32,7 @@ class STTransformerModel(BaseModel):
         self.embedding = nn.Linear(9, self.d_model)
         self.embedding_edge = nn.Linear(10, self.d_model)
 
+        # CHANGE DEFINE THRESHOLD MLP
         # self.regressor = nn.Linear(self.d_model, 2)
         # self.relu = nn.ReLU()
 
@@ -69,6 +70,7 @@ class STTransformerModel(BaseModel):
         # det_emb = self._pointpillars_block(dets_pts, dets_pt_fts)
         # dets = self.embedding(torch.cat([dets_in, det_emb.squeeze(dim=-1)], -1)) 
         dets = self.embedding(dets_in)
+        # CHANGE TRAIN THRESHOLDS
         # threshold = torch.mean(self.relu(self.regressor(dets)), dim=0)
         edge_attr_inter = self.embedding_edge(edge_attr_inter)
 
@@ -84,7 +86,8 @@ class STTransformerModel(BaseModel):
         affinity = [self.affinity(edge_attr_inter)]
         pred_velo = self.velocity(dets)
 
-        return affinity, tracks, dets, pred_velo #, threshold
+        # CHANGE RETURN THRESHOLD
+        return affinity, tracks, dets, pred_velo#, threshold
 
     def _pointpillars_block(self, det_pts, det_features):
         

@@ -283,7 +283,7 @@ class TrackingEvalWrapper(TrackingEval):
                 frame_id += 1
 
 
-def eval_nusc_tracking(res_path, eval_set="custom_val", output_dir=None, root_path=None, verbose=True,
+def eval_nusc_tracking(res_path, eval_set="val", output_dir=None, root_path=None, verbose=True,
                        num_vis=10, vis_only=False, vis_score_thresh=0.0, eval_range=50.0):
     
     cfg = track_configs("tracking_nips_2019")

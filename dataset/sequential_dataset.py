@@ -37,14 +37,13 @@ class Sequence(Dataset):
         det_category = detections['class']
         # det_class_one_hot = torch_one_hot(det_category, self.num_classes)
         det_score = torch.unsqueeze(detections['score'], 1)
-        # det_points = detections['points']
-        # det_pt_features = detections['pt_features']
-        # det_nbr_points = detections['nbr_points']
         det_embedding = detections['embedding']
+        det_yolo_class = detections['yolo_class']
+        # torch.unsqueeze(detections['yolo_class'], 1)
         det_feat = torch.cat([det_box, det_velo], 1)
         # Build the adjacency matrix of the detection graph
         # CHANGE: classes with embedding to build graph 
-        det_adj = graph_util.bev_euclidean_embedding_distance_adj(det_box, det_embedding, self.graph_truncation_dist)
+        det_adj = graph_util.bev_euclidean_distance_adj(det_box, det_yolo_class, self.graph_truncation_dist)
         edge_index_det = graph_util.adj_to_edge_index(det_adj)
 
         frame_data = Data(x=det_feat,
@@ -57,6 +56,7 @@ class Sequence(Dataset):
                         #   det_points=det_points,
                         #   det_pt_features=det_pt_features,
                         #   det_nbr_points=det_nbr_points,
+                          det_yolo_class=det_yolo_class,
                           det_embedding=det_embedding,
                           next_exist=det_next_exist,
                           velo_target=velo_target,

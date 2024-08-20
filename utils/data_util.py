@@ -44,12 +44,9 @@ def category_to_tracking_name_base(category_name):
     :return: nuScenes tracking class.
     """
     tracking_mapping = {
-        'vehicle.bicycle': 'bicycle',
         'vehicle.car': 'car',
-        'human.pedestrian.adult': 'pedestrian',
-        'human.pedestrian.child': 'pedestrian',
-        'human.pedestrian.construction_worker': 'pedestrian',
-        'human.pedestrian.police_officer': 'pedestrian',
+        'vehicle.motorcycle': 'motorcycle',
+        'vehicle.trailer': 'trailer',
         'vehicle.truck': 'truck'
     }
 
@@ -71,16 +68,16 @@ NuScenesClasses = {
 
 NuScenesClassesBase = {
     'car' : 0,
-    'bicycle' : 2,
     'truck' : 3,
+    'motorcycle' : 5,
     'trailer' : 6,
 }
 
-# NOVEL_LABELS = ['pedestrian','bus','motorcycle']
-# MAPPER = [1, 4, 5]
+NOVEL_LABELS = ['pedestrian','bicycle', 'bus']
+MAPPER = [1, 2, 4]
 
-NOVEL_LABELS = ['pedestrian', 'person','bus', 'motorcycle', 'motorbike', 'scooter', 'bike']
-MAPPER = [1, 1, 4, 5, 5, 5, 5]
+# NOVEL_LABELS = ['pedestrian', 'person','bicycle','cycle', 'tricycle', 'bus']
+# MAPPER = [1, 1, 3, 3, 3, 4]
 
 # NUSCENES_LABELS = ['car', 'person', 'pedestrian', 'bicycle', 'truck', 'bus', 'motorcycle', 'motorbike', 'scooter', 'trailer', 'semi trailer', 'cargo container', 'shipping container', 'freight container', 'camper', 'recreational vehicle']
 # MAPPER = [0, 1, 1, 2, 3, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6]

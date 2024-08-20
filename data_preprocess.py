@@ -55,8 +55,7 @@ def drop_empty_detections(data):
 
 def drop_features(data):
 
-        del data['dets']['points']  
-        del data['dets']['pt_features']
+        del data['dets']['embedding']  
 
         if 'sam_points' in data['dets']:
             del data['dets']['sam_points']  
@@ -179,6 +178,30 @@ def base_ground_truth(split, data):
 
     return data
 
+def drop_background(data):
+
+    indices = []
+    for i, class_label in enumerate(data['dets']['yolo_class']):
+        if class_label != 7:
+            indices.append(i)
+    
+    for item in data['dets']:
+        data['dets'][item] = data['dets'][item][indices]
+
+    return data
+
+def convert_emb_class(data, clip):
+    labelset = list(NuScenesClasses.keys()) + ['background']
+    text_features = extract_clip_feature(labelset, clip).detach().cpu().numpy()
+    yolo_class = []
+    for i, emb in enumerate(data['dets']['embedding']):
+        index = np.where(np.all(text_features == emb, axis=1))[0]
+        # index = next((i for i, clip_emb in enumerate(text_features) if np.array_equal(clip_emb, emb)), None)
+        print(data['dets']['class'][i], index)
+        yolo_class.append(index)
+    data['dets']['yolo_class'] = np.array(yolo_class, dtype=np.int)
+    return data
+
 
 def write_data_per_scene(scene, output):
     print('Writing data into pkl files...')
@@ -205,7 +228,7 @@ def write_data_per_scene(scene, output):
 
 def main(output_dir, save_dir):
     clip = load_clip()
-    for split in ["training", "validation"]:
+    for split in [ "validation"]:
         split_path = output_dir / split
         save_output = save_dir / split
         save_output.mkdir(parents=True, exist_ok=True)
@@ -218,13 +241,16 @@ def main(output_dir, save_dir):
                 frame_pkl = scene_path / frame
                 f = open(frame_pkl, 'rb') 
                 frame_data = pickle.load(f)
-                if split == 'training':
-                    frame_data['dets'] = simpletrack_nms(frame_data['dets'], iou_threshold=0.1)
-                frame_data = drop_empty_detections(frame_data)
-                frame_data = obtain_openscene_labels(split, clip, frame_data)
-                frame_data = sampling_detection_points(frame_data)
-                frame_data = drop_features(frame_data)
-                frame_data = base_ground_truth(split, frame_data)
+                
+                # if split == 'training':
+                #     frame_data['dets'] = simpletrack_nms(frame_data['dets'], iou_threshold=0.1)
+                # frame_data = drop_empty_detections(frame_data)
+                # frame_data = obtain_openscene_labels(split, clip, frame_data)
+                # frame_data = sampling_detection_points(frame_data)
+                # frame_data = drop_features(frame_data)
+                # frame_data = base_ground_truth(split, frame_data)
+                frame_data = convert_emb_class(frame_data, clip)
+                # frame_data = drop_features(frame_data)
                 frame_dets_dict = frame_data["dets"]
                 frame_result = {'detections': frame_data['dets'],
                             'ground_truths': frame_data['gts'],

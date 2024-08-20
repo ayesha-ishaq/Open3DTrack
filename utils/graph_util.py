@@ -19,14 +19,26 @@ def adj_to_edge_index(adj):
 def class_velocity_adj(boxes, classes, time_diff=0.5):
     center_dist = torch.cdist(boxes[0][:, :2], boxes[1][:, :2], p=2.0)
     cls_mask = torch.eq(classes[0].unsqueeze(1), classes[1].unsqueeze(0))
+    unknown_1 = torch.eq(classes[0].unsqueeze(1), 7)
+    unknown_2 = torch.eq(classes[1].unsqueeze(0), 7)
+    combined = unknown_1 | unknown_2
+    cls_mask = cls_mask | combined
     cls_mask = torch.logical_not(cls_mask).float() * 1e16
     center_dist += cls_mask
+    # size_diff = torch.cdist(boxes[0][:, 3:6],  boxes[1][:, 3:6], p=1.0)
 
-    max_velo = torch.tensor([4, 1, 3, 5.5, 13, 3, 4], device=boxes[0].device)
-    distance_thresh = torch.gather(max_velo, 0, classes[0].long())
+
+    # max_velo = torch.tensor([4, 1, 3, 4, 5.5, 13, 3, 4], device=boxes[0].device)
+    # distance_thresh = torch.gather(max_velo, 0, classes[0].long())
     # distance_thresh *= time_diff
+    distance_thresh = 3
+    # size_thresh = 0.8
+    
+    # Create masks based on the computed thresholds
+    center_mask = torch.le(center_dist, distance_thresh).int()  # distance threshold
+    # size_mask = torch.le(size_diff, size_thresh).int()
 
-    adj = torch.le(center_dist, distance_thresh.unsqueeze(1)).int()
+    adj = center_mask 
     return adj
 
 def embedding_velocity_adj(boxes, embeddings, time_diff=0.5):
@@ -81,7 +93,12 @@ def bev_euclidean_distance_adj(boxes, classes=None, thresh=2.0):
             classes = (classes, classes)
         cls_mask = torch.eq(classes[0].unsqueeze(1),
                             classes[1].unsqueeze(0))
-        adj *= cls_mask.int()
+        unknown_1 = classes[0].unsqueeze(1) == 7
+        unknown_2 = classes[1].unsqueeze(0) == 7
+        
+        combined_unknown_mask = unknown_1 | unknown_2
+        adj *= torch.logical_or(cls_mask, combined_unknown_mask).int()
+
     return adj
 
 def bev_euclidean_embedding_distance_adj(boxes, embeddings=None, thresh=2.0):
@@ -159,21 +176,19 @@ def build_inter_graph(det_boxes, track_boxes, det_class, track_class,
 
     return data_batch
 
-def build_embedding_inter_graph(det_boxes, track_boxes, det_embedding, track_embedding,
-                                track_velo, track_age, det_batch, track_batch, dist_thresh, size_thresh):
+def build_thresh_inter_graph(det_boxes, track_boxes, track_velo, track_age, 
+                            det_batch, track_batch, dist_thresh, size_thresh):
 
     det_boxes_list = unbatch(det_boxes, det_batch)
-    det_emb_list = unbatch(det_embedding, det_batch)
 
     track_boxes_list = unbatch(track_boxes, track_batch)
-    track_emb_list = unbatch(track_embedding, track_batch)
     track_velo_list = unbatch(track_velo, track_batch)
 
     track_age_list = unbatch(track_age, track_batch)
 
     data_list = []
-    for boxes_d, emb_d, boxes_t, emb_t, age_t, velo_t in zip(det_boxes_list,
-        det_emb_list, track_boxes_list, track_emb_list, track_age_list, track_velo_list):
+    for boxes_d, boxes_t, age_t, velo_t in zip(det_boxes_list,
+        track_boxes_list, track_age_list, track_velo_list):
 
         # Move track boxes forward using their velocity
         pred_boxes_t = deepcopy(boxes_t)
@@ -181,7 +196,7 @@ def build_embedding_inter_graph(det_boxes, track_boxes, det_embedding, track_emb
         delta_dist = velo_t.detach() * age_t.unsqueeze(1) * 0.5
         pred_boxes_t[:, :2] += delta_dist # s1 = s0 + v0 * delta_t
 
-        adj = embedding_velocity_adj((pred_boxes_t, boxes_d), (emb_t, emb_d))
+        adj = velocity_adj((pred_boxes_t, boxes_d), dist_thresh, size_thresh)
         edge_index = adj_to_edge_index(adj)
 
         diff_box = boxes_d[edge_index[1, :], :] - boxes_t[edge_index[0, :], :]
