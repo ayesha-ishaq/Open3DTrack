@@ -8,7 +8,6 @@
 
 from torch_geometric.loader import DataLoader
 
-
 class BaseDataLoader(DataLoader):
     
     def __init__(self, dataset, batch_size=1, pin_memory=True, shuffle=True, num_workers=1):

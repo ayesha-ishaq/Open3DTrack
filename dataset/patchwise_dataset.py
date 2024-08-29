@@ -13,12 +13,13 @@ import utils.graph_util as graph_util
 
 
 class PatchwiseDataset(BaseDataset):
-    def __init__(self, data_dir, split, sample_length, dataset, iou_matching, score_threshold, graph_truncation_dist):
+    def __init__(self, data_dir, split, sample_length, dataset, iou_matching, score_threshold, graph_truncation_dist, augmentations=False):
         super().__init__(data_dir, split, dataset, iou_matching, score_threshold)
 
         assert sample_length >= 2, 'sample length must be grater than or equal to 2'
         self.sample_length = sample_length
         self.graph_truncation_dist = graph_truncation_dist
+        self.augmentations = augmentations
                 
         self.meta = self._generate_meta()
         self.follow_batch = ['x']
@@ -80,12 +81,6 @@ class PatchwiseDataset(BaseDataset):
             det_next_trans = self.data[seq_id][frame_id + i]['det_next_trans']
             velo_target = (det_next_trans - detections['box'][:, :2]) * 2.0
 
-            # detections = self.data[frame_id + i]['dets']
-            # det_matched_track_id = self.data[frame_id + i]['det_matched_track_id']
-            # det_next_exist = self.data[frame_id + i]['det_next_exist']
-            # det_next_trans = self.data[frame_id + i]['det_next_trans']
-            # velo_target = (det_next_trans - detections['box'][:, :2]) * 2.0
-
             det_box = detections['box']
             det_velo = detections['velocity']
             det_category = detections['class']
@@ -93,13 +88,30 @@ class PatchwiseDataset(BaseDataset):
             det_score = torch.unsqueeze(detections['score'], 1)
             det_embedding = detections['embedding']
             det_yolo_class = detections['yolo_class']
+            det_yolo_score = detections['yolo_score']
+
+            if self.augmentations:
+                if torch.rand(1).item() < 0.4:
+                    num_detections = det_yolo_class.size(0)
+                    if num_detections > 0:
+                        # Randomly select a small number of detections (e.g., 1-3 detections)
+                        num_to_change = torch.randint(low=1, high=min(5, num_detections + 1), size=(1,)).item()
+                        indices_to_change = torch.randperm(num_detections)[:num_to_change]
+                        det_yolo_class[indices_to_change] = 7
+
+                        num_to_change = torch.randint(low=1, high=min(5, num_detections + 1), size=(1,)).item()
+                        indices_to_change = torch.randperm(num_detections)[:num_to_change]
+                        # Add Gaussian noise to the bounding boxes
+                        noise_std = 0.01  # Standard deviation for the Gaussian noise
+                        det_box[indices_to_change] += torch.normal(mean=0, std=noise_std, size=det_box[indices_to_change].shape)
+
             if det_velo.numel() == 0:
                 det_feat = torch.empty(0,9)
             else:
                 det_feat = torch.cat([det_box, det_velo], 1)
             # Build the adjacency matrix of the detection graph
             # CHANGE: classes with embedding to build graph 
-            det_adj = graph_util.bev_euclidean_distance_adj(det_box, det_yolo_class, self.graph_truncation_dist)
+            det_adj = graph_util.bev_euclidean_distance_adj(det_box, None, self.graph_truncation_dist)
             edge_index_det = graph_util.adj_to_edge_index(det_adj)
 
             frame_data = Data(x=det_feat,
@@ -109,9 +121,7 @@ class PatchwiseDataset(BaseDataset):
                               det_velo=det_velo,
                               det_class=det_category,
                               det_score=det_score,
-                            #   det_points = det_points,
-                            #   det_pt_features = det_pt_features,
-                            #   det_nbr_points = det_nbr_points,
+                              det_yolo_score=det_yolo_score,
                               det_yolo_class=det_yolo_class,
                               det_embedding=det_embedding,
                               frame_id=torch.tensor(frame_id, dtype=torch.int),

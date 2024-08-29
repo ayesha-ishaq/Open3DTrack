@@ -6,39 +6,48 @@
 import torch
 from torch import Tensor
 from copy import deepcopy
-
+import iou3d_nms_cuda
+import pulp
 
 from torch_geometric.data import Batch
 from torch_geometric.utils.unbatch import unbatch
 
-from utils.data_util import BipartiteData
+from utils.data_util import BipartiteData, NuScenesClassesBase
 
 def adj_to_edge_index(adj):
     return torch.nonzero(adj).transpose(1, 0).long()
 
 def class_velocity_adj(boxes, classes, time_diff=0.5):
     center_dist = torch.cdist(boxes[0][:, :2], boxes[1][:, :2], p=2.0)
-    cls_mask = torch.eq(classes[0].unsqueeze(1), classes[1].unsqueeze(0))
-    unknown_1 = torch.eq(classes[0].unsqueeze(1), 7)
-    unknown_2 = torch.eq(classes[1].unsqueeze(0), 7)
-    combined = unknown_1 | unknown_2
-    cls_mask = cls_mask | combined
-    cls_mask = torch.logical_not(cls_mask).float() * 1e16
-    center_dist += cls_mask
-    # size_diff = torch.cdist(boxes[0][:, 3:6],  boxes[1][:, 3:6], p=1.0)
 
+    # base_classes = torch.tensor(list(NuScenesClassesBase.values())).to('cuda:0')
+
+    # novel_mask_1 = torch.eq(classes[0].unsqueeze(1), base_classes)
+    # novel_mask_1 = novel_mask_1.any(dim=1)
+    # unknown_1 = torch.eq(classes[0], 7)
+    # novel_mask_1 = unknown_1 | novel_mask_1
+
+    # novel_mask_2 = torch.ne(classes[1].unsqueeze(1), base_classes)
+    # novel_mask_2 = novel_mask_2.all(dim=1)
+
+    # cls_mask = torch.logical_or(novel_mask_1.unsqueeze(1), novel_mask_2.unsqueeze(0))
+
+    # cls_mask = torch.eq(classes[0].unsqueeze(1), classes[1].unsqueeze(0))
+    # unknown_1 = torch.eq(classes[0].unsqueeze(1), 7)
+    # unknown_2 = torch.eq(classes[1].unsqueeze(0), 7)
+    # combined = unknown_1 | unknown_2
+    # cls_mask = cls_mask | combined
+    # cls_mask = torch.logical_not(cls_mask).float() * 1e16
+    # center_dist += cls_mask
 
     # max_velo = torch.tensor([4, 1, 3, 4, 5.5, 13, 3, 4], device=boxes[0].device)
     # distance_thresh = torch.gather(max_velo, 0, classes[0].long())
     # distance_thresh *= time_diff
     distance_thresh = 3
-    # size_thresh = 0.8
     
     # Create masks based on the computed thresholds
-    center_mask = torch.le(center_dist, distance_thresh).int()  # distance threshold
-    # size_mask = torch.le(size_diff, size_thresh).int()
-
-    adj = center_mask 
+    adj = torch.le(center_dist, distance_thresh).int() 
+ 
     return adj
 
 def embedding_velocity_adj(boxes, embeddings, time_diff=0.5):
@@ -51,32 +60,40 @@ def embedding_velocity_adj(boxes, embeddings, time_diff=0.5):
     adj = torch.le(center_dist, distance_thresh).int()
     return adj
 
-def velocity_adj(boxes, dist_thresh, size_thresh, time_diff=0.5):
+def velocity_adj(boxes, classes, velo, time_diff=0.5):
 
     track_boxes = boxes[0]
     detection_boxes = boxes[1]
-    
-    # dist_pct = 0.1
-    # size_pct = 0.1
-    # orientation_pct = 0.05
 
-    # # Compute the thresholds based on the percentage differences
-    # dist_thresh = 5 #torch.norm(delta_dist[:, :2], p=2.0, dim=1).unsqueeze(1) * dist_pct
-    # size_thresh = 1 #torch.norm(track_boxes[:, 3:6], p=1.0, dim=1).unsqueeze(1) * size_pct
-    # orientation_thresh = 0.5 #torch.abs(track_boxes[:, 6].unsqueeze(1)) * orientation_pct
+    # iou = torch.FloatTensor(torch.Size((track_boxes.shape[0], detection_boxes.shape[0]))).zero_()
+    # iou3d_nms_cuda.boxes_iou_bev_cpu(track_boxes.contiguous(), detection_boxes.contiguous(), iou)
 
-    # Compute the differences
     center_dist = torch.cdist(track_boxes[:, :2], detection_boxes[:, :2], p=2.0)
-    size_diff = torch.cdist(track_boxes[:, 3:6], detection_boxes[:, 3:6], p=1.0)
-    # orientation_diff = torch.cdist(track_boxes[:, 6].unsqueeze(1), detection_boxes[:, 6].unsqueeze(1), p=1.0)
+    size_diff = torch.cdist(track_boxes[:, 3:6], detection_boxes[:, 3:6], p=2.0)
+    velo_diff = torch.cdist(velo[0].detach(), velo[1], p=2.0)
 
-    # Create masks based on the computed thresholds
-    center_mask = torch.le(center_dist, dist_thresh).int()  # distance threshold
-    size_mask = torch.le(size_diff, size_thresh).int()  # size threshold
-    # orientation_mask = torch.le(orientation_diff, orientation_thresh).int()  # orientation threshold
-    
-    # Combine all masks to create the final adjacency matrix
-    adj = center_mask * size_mask #* orientation_mask
+    cost = center_dist + 2 * size_diff + velo_diff
+
+    # Number of lowest cost detections to keep
+    num_detections = cost.shape[1]
+
+    # Set k to the smaller value between 10 and the number of detections
+    k = min(15, num_detections)
+
+    # Get the 10 lowest costs and their indices for each track
+    _, topk_indices = torch.topk(cost, k, dim=1, largest=False)
+    adj = torch.zeros_like(cost, dtype=torch.int32)
+    adj.scatter_(1, topk_indices, 1)
+
+    # cls_mask = torch.eq(classes[0].unsqueeze(1), classes[1].unsqueeze(0))
+    # unknown_1 = torch.eq(classes[0].unsqueeze(1), 7)
+    # unknown_2 = torch.eq(classes[1].unsqueeze(0), 7)
+    # combined = unknown_1 | unknown_2
+    # cls_mask = cls_mask | combined
+    # cls_mask = torch.logical_not(cls_mask).float() * 2
+    # cost = cost.to('cuda:0') + cls_mask
+    # thresh = 5
+    # adj = torch.le(center_dist, track_velocity.unsqueeze(1)).int()
     
     return adj
 
@@ -133,10 +150,12 @@ def fully_connected_adj(size_a, size_b):
 
 
 def build_inter_graph(det_boxes, track_boxes, det_class, track_class,
-                      track_velo, track_age, det_batch, track_batch):
+                      track_velo, det_velo, track_age, det_batch, track_batch,
+                      ):
 
     det_boxes_list = unbatch(det_boxes, det_batch)
     det_class_list = unbatch(det_class, det_batch)
+    det_velo_list = unbatch(det_velo, det_batch)
 
     track_boxes_list = unbatch(track_boxes, track_batch)
     track_class_list = unbatch(track_class, track_batch)
@@ -145,20 +164,24 @@ def build_inter_graph(det_boxes, track_boxes, det_class, track_class,
     track_age_list = unbatch(track_age, track_batch)
 
     data_list = []
-    for boxes_d, cls_d, boxes_t, cls_t, age_t, velo_t in zip(det_boxes_list,
-        det_class_list, track_boxes_list, track_class_list, track_age_list, track_velo_list):
+    for boxes_d, cls_d, boxes_t, cls_t, age_t, velo_t, velo_d in zip(det_boxes_list,
+        det_class_list, track_boxes_list, track_class_list, track_age_list, track_velo_list,
+        det_velo_list
+        ):
 
         # Move track boxes forward using their velocity
         pred_boxes_t = deepcopy(boxes_t)
         # TODO: update with precise time stamp
         pred_boxes_t[:, :2] += velo_t.detach() * age_t.unsqueeze(1) * 0.5 # s1 = s0 + v0 * delta_t
 
+        # adj = velocity_adj((pred_boxes_t, boxes_d), (cls_t, cls_d), (velo_t, velo_d))
         adj = class_velocity_adj((pred_boxes_t, boxes_d), (cls_t, cls_d))
         edge_index = adj_to_edge_index(adj)
 
         diff_box = boxes_d[edge_index[1, :], :] - boxes_t[edge_index[0, :], :]
         diff_time = age_t[edge_index[0, :]].unsqueeze(1)
         diff_position_pred = boxes_d[edge_index[1, :], :2] - pred_boxes_t[edge_index[0, :], :2]
+        # edge_cost = cost[edge_index[0, :], edge_index[1, :]].unsqueeze(1)
 
         # Initial edge attribute
         # frame time difference, position difference, size difference

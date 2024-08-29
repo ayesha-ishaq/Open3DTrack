@@ -133,6 +133,7 @@ class BaseDataset(Dataset):
         data['dets']['velocity'] = torch.from_numpy(data['dets']['velocity'])
         data['dets']['class'] = torch.from_numpy(data['dets']['class'])
         data['dets']['score'] = torch.from_numpy(data['dets']['score'])
+        data['dets']['yolo_score'] = torch.from_numpy(data['dets']['yolo_score'])
         data['dets']['yolo_class'] = torch.from_numpy(data['dets']['yolo_class'])
         data['dets']['embedding'] = torch.from_numpy(data['dets']['embedding'])
     
@@ -178,7 +179,6 @@ class BaseDataset(Dataset):
 
             iou3d_nms_cuda.boxes_iou_bev_cpu(det_box.contiguous(), gt_box.contiguous(), iou)
 
-
             iou_valid_mask = iou > 0
             valid_mask = torch.logical_and(cls_valid_mask, iou_valid_mask)
             invalid_mask = torch.logical_not(valid_mask)
@@ -188,6 +188,44 @@ class BaseDataset(Dataset):
             dist_valid_mask = torch.le(center_dist, 2.0)
             valid_mask = torch.logical_and(cls_valid_mask, dist_valid_mask)
             invalid_mask = torch.logical_not(valid_mask)
+            cost = center_dist + 1e18 * invalid_mask
+
+        cost[cost > 1e16] = 1e18
+
+        # row_ind: index of detection boxes
+        # col_ind: index of ground truth
+        row_ind, col_ind = linear_sum_assignment(cost)
+
+        matches = []
+        for i, j in zip(row_ind, col_ind):
+            if cost[i, j] < 1e16:
+                matches.append([i, j])
+        
+        return matches
+
+    def _dets_gt_matching_class_agnostic(self, det_box, gt_box):
+        '''
+        Assign tracking ID for detection boxes in data preprocessing.
+        '''
+
+        if self.iou_matching:
+            # from ops.iou3d import iou3d_nms_utils
+            # iou = iou3d_nms_utils.boxes_iou_bev_cpu(det_box, gt_box)
+            # iou_gpu = iou3d_nms_utils.boxes_iou_bev(det_box.cuda(), gt_box.cuda())
+
+            import iou3d_nms_cuda
+            assert det_box.shape[1] == gt_box.shape[1] == 7
+            iou = torch.FloatTensor(torch.Size((det_box.shape[0], gt_box.shape[0]))).zero_()
+
+            iou3d_nms_cuda.boxes_iou_bev_cpu(det_box.contiguous(), gt_box.contiguous(), iou)
+
+            iou_valid_mask = iou > 0
+            invalid_mask = torch.logical_not(iou_valid_mask)
+            cost = - iou + 1e18 * invalid_mask
+        else:
+            center_dist = torch.cdist(det_box[:, :2], gt_box[:, :2], p=2.0)
+            dist_valid_mask = torch.le(center_dist, 2.0)
+            invalid_mask = torch.logical_not(dist_valid_mask)
             cost = center_dist + 1e18 * invalid_mask
 
         cost[cost > 1e16] = 1e18
@@ -223,8 +261,8 @@ class BaseDataset(Dataset):
                 det_box = frame['dets']['box']
                 gt_box = frame['gts']['box']
 
-                det_cls = frame['dets']['class']
-                gt_cls = frame['gts']['class']
+                # det_cls = frame['dets']['yolo_class']
+                # gt_cls = frame['gts']['class']
 
                 # Avoid tracking id match across batch elements
                 gt_track_id = frame['gts']['tracking_id'] + scene_id * 1000
@@ -234,7 +272,8 @@ class BaseDataset(Dataset):
                 gt_next_x = get_next_trans[:, 0]
                 gt_next_y = get_next_trans[:, 1]
 
-                matches = self._dets_gt_matching(det_box, det_cls, gt_box, gt_cls)
+                # matches = self._dets_gt_matching(det_box, det_cls, gt_box, gt_cls)
+                matches = self._dets_gt_matching_class_agnostic(det_box, gt_box)
 
                 num_all_gts += frame['num_gts']
                 num_all_matched_gts += len(matches)

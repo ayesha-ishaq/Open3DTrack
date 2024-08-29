@@ -22,12 +22,13 @@
     "train_dataset": {
         "type": "PatchwiseDataset",
         "args": {
-            "data_dir": "/l/users/ayesha.ishaq/3dmotformer/output_pkl_label_features",
+            "data_dir": "/l/users/ayesha.ishaq/3dmotformer/output_pkl_split_PBB",
             "split": "training",
             "sample_length": 6,
             "dataset": "nuscenes",
             "iou_matching": true,
-            "score_threshold": 0.0
+            "score_threshold": 0.0,
+            "augmentations": false
         }
     },
     "train_data_loader": {
@@ -42,7 +43,7 @@
     "val_dataset": {
         "type": "SequentialDataset",
         "args": {
-            "data_dir": "/l/users/ayesha.ishaq/3dmotformer/output_pkl_label_features",
+            "data_dir": "/l/users/ayesha.ishaq/3dmotformer/output_pkl_split_PBB",
             "split": "validation",
             "dataset": "nuscenes",
             "iou_matching": true,

@@ -141,7 +141,7 @@ def compute_distance(box1, box2):
 def find_max_iou_or_closest(projected_box, detection_boxes):
     """
     Compute the IoU between the projected box and all detection boxes, and find the one with the maximum IoU.
-    If no overlap, return the detection box closest to the projected box.
+    If no overlap, return None.
     
     Args:
     projected_box: A list of 4 numbers representing the coordinates of the projected box [x1, y1, x2, y2].
@@ -152,31 +152,36 @@ def find_max_iou_or_closest(projected_box, detection_boxes):
     best_value: The maximum IoU value or the minimum distance if no overlap.
     """
     if not detection_boxes:  # If there are no detection boxes
-        return None
+        return None, None
 
     max_iou = 0
     best_box_class = None
+    score = None
 
-    for det_box in detection_boxes:
-        iou = compute_iou(projected_box, det_box[:4])
-        if iou > max_iou:
-            max_iou = iou
-            best_box_class = det_box[-1]
+    low_iou_boxes = []
+    for i, det_box in enumerate(detection_boxes):
+        if det_box[-2] >= 0.02:
+            iou = compute_iou(projected_box, det_box[:4])
+            if iou > max_iou:
+                max_iou = iou
+                best_box_class = det_box[-1]
+                score = det_box[-2]
+        else:
+            low_iou_boxes.append(i)
 
     if max_iou > 0:
-        return best_box_class
+        return best_box_class, score
+
     else:
-        # If no overlap, find the closest box
-        min_distance = float('inf')
-        closest_box = None
+        for index in low_iou_boxes:
+            iou = compute_iou(projected_box, detection_boxes[i][:4])
+            if iou > max_iou:
+                max_iou = iou
+                best_box_class = detection_boxes[i][-1]
+                score = detection_boxes[i][-2]
+    
+    return best_box_class, score
 
-        for det_box in detection_boxes:
-            distance = compute_distance(projected_box, det_box[:4])
-            if distance < min_distance:
-                min_distance = distance
-                closest_box = det_box[-1]
-
-        return closest_box
 
 def base_class_2d(dets):
     for scene in dets:
@@ -217,8 +222,9 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
     print('Generating detection and ground truth sequences...')
     result = []
     clip = load_clip()
-    labelset = list(NuScenesClasses.keys()) + ['background']
+    labelset = list(NuScenesClasses.keys())
     text_features = extract_clip_feature(labelset, clip).detach().cpu().numpy()
+    text_features = np.vstack((text_features, np.zeros((1, 768))))
 
     cameras = ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"]
 
@@ -295,6 +301,7 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
                 # get 2D bounding box for nms detections only
                 embedding = np.zeros((len(frame_dets_dict['translation']), 768))
                 yolo_class = np.zeros(len(frame_dets_dict['translation']))
+                yolo_score = np.zeros(len(frame_dets_dict['translation']))
                 frame_det_pts_features = []
             
                 for nms_dets_index in range(len(frame_dets_dict['translation'])):
@@ -329,18 +336,21 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
                         if final_coords is None:
                             continue
                         else:
-                            class_name = find_max_iou_or_closest(final_coords, dets[scene_name][current_token][cam])
+                            class_name, class_score = find_max_iou_or_closest(final_coords, dets[scene_name][current_token][cam])
                             proj_flag = True
                             break
                 
                     if not proj_flag or class_name==None:
                         class_name = 7
+                        class_score = 0.01
             
                     embedding[nms_dets_index] = text_features[int(class_name)]
                     yolo_class[nms_dets_index] = int(class_name)
+                    yolo_score[nms_dets_index] = class_score
                 
                 frame_dets_dict['embedding'] = embedding.astype(np.float32) # [N, 768]
                 frame_dets_dict['yolo_class'] = yolo_class.astype(np.int32) # [N]
+                frame_dets_dict['yolo_score'] = yolo_score.astype(np.float32) # [N]
                 
                 ## Process and concat ground truths for every frame
                 frame_ann_tokens = current_sample['anns']

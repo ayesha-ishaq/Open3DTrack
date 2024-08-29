@@ -1,6 +1,8 @@
 
 import pickle
 import os
+import json
+import h5py
 from tqdm import tqdm
 import argparse
 import numpy as np
@@ -10,6 +12,33 @@ import torch.nn.functional as F
 
 from utils.data_util import NuScenesClasses, NuScenesClassesBase
 from utils.util import load_clip, extract_clip_feature, farthest_point_sampling, zero_pad_point_cloud
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NumpyEncoder, self).default(obj)
+
+def save_dict_to_hdf5(group, data_dict):
+    for key, value in data_dict.items():
+        if isinstance(value, dict):
+            # Save each dictionary as a group
+            subgroup = group.create_group(key)
+            save_dict_to_hdf5(subgroup, value)
+        elif isinstance(value, list):
+            # If the value is a list, create a group for the list and iterate over the elements
+            list_group = group.create_group(key)
+            for i, item in enumerate(value):
+                if isinstance(item, dict):
+                    # Save each dictionary in the list as a subgroup
+                    item_group = list_group.create_group(str(i))
+                    save_dict_to_hdf5(item_group, item)
+                else:
+                    # Save the item directly if it's not a dict
+                    list_group.create_dataset(str(i), data=np.array(item))
+        else:
+            # Save non-dict and non-list items directly
+            group.create_dataset(key, data=np.array(value))
 
 def simpletrack_nms(frame_det_data, iou_threshold=0.1):
     from SimpleTrack.data_loader.nuscenes_loader import nu_array2mot_bbox
@@ -227,11 +256,14 @@ def write_data_per_scene(scene, output):
             pickle.dump(content, f)
 
 def main(output_dir, save_dir):
-    clip = load_clip()
+    # clip = load_clip()
+
     for split in [ "validation"]:
         split_path = output_dir / split
-        save_output = save_dir / split
+        save_output = save_dir
         save_output.mkdir(parents=True, exist_ok=True)
+        save_output = save_dir / (split + '.h5')
+        split_data = {}
         for scene_id, scene in enumerate(sorted(os.listdir(split_path))):
             print("scene ID", scene_id)
             scene_path = split_path / scene
@@ -240,7 +272,7 @@ def main(output_dir, save_dir):
             for frame_id, frame in enumerate(tqdm(frames)):
                 frame_pkl = scene_path / frame
                 f = open(frame_pkl, 'rb') 
-                frame_data = pickle.load(f)
+                frame = pickle.load(f)
                 
                 # if split == 'training':
                 #     frame_data['dets'] = simpletrack_nms(frame_data['dets'], iou_threshold=0.1)
@@ -249,22 +281,37 @@ def main(output_dir, save_dir):
                 # frame_data = sampling_detection_points(frame_data)
                 # frame_data = drop_features(frame_data)
                 # frame_data = base_ground_truth(split, frame_data)
-                frame_data = convert_emb_class(frame_data, clip)
+                # frame_data = convert_emb_class(frame_data, clip)
                 # frame_data = drop_features(frame_data)
-                frame_dets_dict = frame_data["dets"]
-                frame_result = {'detections': frame_data['dets'],
-                            'ground_truths': frame_data['gts'],
-                            'num_dets': len(frame_data['dets']['translation']), # int: N
-                            'num_gts': len(frame_data['gts']['translation']), # int: M
-                            'scene_id': scene_id,
-                            'frame_id': frame_id,
-                            'ego_translation': frame_data['ego_translation'],
-                            'timestamp': frame_data['timestamp'],
-                            'sample_token': frame_data['token']
-                            }
-                scene_result.append(frame_result)
-            # write_data_per_scene(scene_result, save_output)
-            
+                content = {'dets': frame['dets'],
+                   'gts': frame['gts'],
+                   'num_dets': len(frame['dets']['translation']),
+                   'num_gts': len(frame['gts']['translation']),
+                   'ego_translation': frame['ego_translation'],
+                   'timestamp': frame['timestamp'],
+                   'token': frame['token']
+                  }
+                scene_result.append(content)
+            split_data[f'{scene_id:04d}'] = scene_result
+        with h5py.File(save_output, 'w') as h5file:
+            for scene_id, scene_content in split_data.items():
+                scene_group = h5file.create_group(scene_id)
+                print(type(scene_content))
+                for i, item in enumerate(scene_content):
+                    print(type(item))
+                    item_group = scene_group.create_group(str(i))
+                    for key, value in item.items():
+                        if isinstance(value, dict):
+                            # If the value is a dictionary, create a subgroup for it
+                            subgroup = item_group.create_group(key)
+                            for k, v in value.items():
+                                subgroup.create_dataset(k, data=np.array(v))
+                        else:
+                            # Save non-dict and non-list items directly
+                            item_group.create_dataset(key, data=np.array(value))
+                        
+
+                        
 
 if __name__ == '__main__':
     

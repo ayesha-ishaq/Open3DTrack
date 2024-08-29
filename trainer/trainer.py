@@ -12,6 +12,7 @@ import copy
 import time
 
 import torch
+import numpy as np
 from torch_geometric.data import Data, Batch
 from torch_geometric.utils.unbatch import unbatch
 
@@ -19,7 +20,7 @@ from base import BaseTrainer
 from utils import inf_loop, MetricTracker
 from utils import match_util
 import utils.graph_util as graph_util
-from eval.tracker import Tracker, update_field, update_feature, update_embedding
+from eval.tracker import Tracker, update_field, update_yolo_class, update_feature, update_embedding
 from eval.nusc_eval import eval_nusc_tracking
 
 
@@ -116,15 +117,16 @@ class Trainer(BaseTrainer):
 
         track_age_list = unbatch(batch_track_age, track_batch)
 
+
         data = []
 
         for (inter_graph, affinity, det_feat, trk_feat, det_boxes, trk_boxes, 
              det_velo, trk_velo, det_class, trk_class, det_yolo_class, trk_yolo_class, 
-             det_emb, trk_emb, det_gt, trk_gt, trk_age) in zip(
-                inter_graph_list, affinity_list, det_feat_list, track_feat_list,
-                det_boxes_list, track_boxes_list, det_velo_list, track_velo_list,
-                det_class_list, track_class_list, det_yolo_class_list, track_yolo_class_list,
-                det_embedding_list, track_embedding_list, det_gt_list, track_gt_list, track_age_list):
+             det_emb, trk_emb, det_gt, trk_gt, trk_age) in zip(inter_graph_list, affinity_list, 
+             det_feat_list, track_feat_list, det_boxes_list, track_boxes_list, 
+             det_velo_list, track_velo_list, det_class_list, track_class_list, 
+             det_yolo_class_list, track_yolo_class_list,det_embedding_list, track_embedding_list,
+             det_gt_list, track_gt_list, track_age_list):
 
             edge_index_inter = inter_graph.edge_index
             num_tracks = inter_graph.size_s
@@ -158,8 +160,8 @@ class Trainer(BaseTrainer):
                                           inactive_trk, update_with_dets=True)
             new_track_class = update_field(det_class, trk_class, match, unmat_det,
                                            inactive_trk, update_with_dets=True)
-            new_track_yolo_class = update_field(det_yolo_class, trk_yolo_class, match, unmat_det,
-                                           inactive_trk, update_with_dets=True)
+            new_track_yolo_class = update_yolo_class(det_yolo_class, trk_yolo_class,
+                                           match, unmat_det, inactive_trk)
             new_track_embedding = update_embedding(det_emb, trk_emb, 
                                       det_yolo_class, trk_yolo_class, match, unmat_det,
                                       inactive_trk, weight=self.embedding_update_weight)
@@ -171,7 +173,7 @@ class Trainer(BaseTrainer):
             new_track_age = torch.cat([det_age, trk_age_unmat], 0)
 
             # CHANGE: classes with embedding to build graph 
-            new_track_adj = graph_util.bev_euclidean_distance_adj(new_track_boxes, new_track_yolo_class, 
+            new_track_adj = graph_util.bev_euclidean_distance_adj(new_track_boxes, None,#new_track_yolo_class, 
                                                                   self.graph_truncation_dist)
             new_track_edge_index = graph_util.adj_to_edge_index(new_track_adj)
 
@@ -217,7 +219,6 @@ class Trainer(BaseTrainer):
                 track_batch = data.x_batch
                 track_gt = data.tracking_id
                 track_age = torch.ones_like(track_class, dtype=torch.int)
-
                 dist_thresh, size_thresh = (5, 2)
 
             else:
@@ -227,6 +228,7 @@ class Trainer(BaseTrainer):
                 det_class = data.det_class
                 det_batch = data.x_batch
                 det_gt = data.tracking_id
+                det_velo = data.det_velo
                 det_yolo_class = data.det_yolo_class
                 det_embedding = data.det_embedding
                 velo_target = data.velo_target
@@ -239,7 +241,7 @@ class Trainer(BaseTrainer):
                 #     det_batch, track_batch, dist_thresh, size_thresh)
                 batched_inter_graph = graph_util.build_inter_graph(
                     det_boxes, track_boxes, det_yolo_class, track_yolo_class,
-                    track_velo, track_age, det_batch, track_batch)
+                    track_velo, det_velo, track_age, det_batch, track_batch)
                 edge_index_inter = batched_inter_graph.edge_index
                 edge_attr_inter = batched_inter_graph.edge_attr
 
@@ -356,7 +358,9 @@ class Trainer(BaseTrainer):
                 det_boxes = data.det_box
                 edge_index_det = data.edge_index
                 det_class = data.det_class
+                det_velo = data.det_velo
                 det_yolo_class = data.det_yolo_class
+                det_yolo_score = data.det_yolo_score
                 det_embedding = data.det_embedding
                 det_gt = data.tracking_id
                 velo_target = data.velo_target
@@ -374,7 +378,7 @@ class Trainer(BaseTrainer):
                 inter_graph = graph_util.build_inter_graph(
                     det_boxes, self.tracker.track_state['boxes'],
                     det_yolo_class, self.tracker.track_state['yolo_class'],
-                    self.tracker.track_state['velo'], self.tracker.track_state['age'],
+                    self.tracker.track_state['velo'], det_velo, self.tracker.track_state['age'],
                     det_batch, track_batch).to_data_list()[0] # Batch size is 1 here
                 edge_index_inter = inter_graph.edge_index
                 edge_attr_inter = inter_graph.edge_attr
@@ -423,6 +427,43 @@ class Trainer(BaseTrainer):
             annos.update({token: frame_annos})
         
         return annos
+    def _align_class_labels(self, annos):
+        unknown_count = 0
+        total_count = 0
+        tracking_labels = {}
+        for frame, frame_list in annos.items():
+            for det in frame_list:
+                if det['tracking_name'] != 'unknown':
+                    try:
+                        tracking_labels[det['tracking_id']].append(det['tracking_name'])
+                        total_count+=1
+                    except:
+                        tracking_labels[det['tracking_id']] = [det['tracking_name']]
+                else:
+                    unknown_count+=1
+        print('unknown pert', unknown_count/(unknown_count+total_count))
+        for key, val in tracking_labels.items():
+            val = np.array(val)
+
+        dropped_id = []
+        for frame, frame_list in annos.items():
+            indices_to_remove = []
+            for i, det in enumerate(frame_list):
+                if det['tracking_id'] not in tracking_labels.keys():
+                    dropped_id.append(det['tracking_id'])
+                    indices_to_remove.append(i)
+                else:
+                    unique_values, counts = np.unique(tracking_labels[det['tracking_id']], return_counts=True)
+                    det['tracking_name'] = unique_values[np.argmax(counts)]
+            indices_to_remove.sort(reverse=True)
+            for index in indices_to_remove:
+                frame_list.pop(index)
+        unique_values = np.unique(np.array(dropped_id))
+        print('dropped tracks:', unique_values.shape)
+        print('total tracks:',len(list(tracking_labels.keys())))
+            
+
+        return annos
 
     def _valid_epoch(self, epoch, val_outputs=None):
         """
@@ -450,6 +491,7 @@ class Trainer(BaseTrainer):
             for i, data_seq in enumerate(self.valid_dataset):
                 print(f'Inference on the {i+1}-th validtion sequence.')
                 annos = self._valid_seq(data_seq)
+                annos = self._align_class_labels(annos)
                 nusc_annos["results"].update(annos)
             
             if val_outputs is None:
