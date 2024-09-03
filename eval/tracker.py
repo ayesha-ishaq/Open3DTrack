@@ -144,7 +144,7 @@ class Tracker(object):
             if class_id not in base_ids:
                 class_id = track_yolo_class[i]
                 class_score = track_yolo_score[i].cpu().numpy()
-                # class_id = MAPPER[torch.argmax(track_embedding[i].half() @ text_features.t()).cpu()]
+                class_score = (0.1 + 0.8421*(class_score - 0.01))
             track = {
                 "translation": track_boxes[i, :3].cpu().numpy(),
                 "size": track_boxes[i, 3:6].cpu().numpy(),
@@ -161,7 +161,8 @@ class Tracker(object):
 
         self._initialized = True
 
-    def track_step(self, affinity, pred_velo, inter_graph, data, track_latent_feat, det_latent_feat):
+    def track_step(self, affinity, pred_velo, inter_graph, data, track_latent_feat, det_latent_feat,
+                    det_score_pred):
         '''
         Update tracks based on the predicted affinity.
         '''
@@ -170,10 +171,10 @@ class Tracker(object):
         det_boxes = data.det_box
         det_velo = data.det_velo
         det_class = data.det_class
+        det_score = data.det_score
         det_yolo_class = data.det_yolo_class
         det_yolo_score = data.det_yolo_score
         det_embedding = data.det_embedding
-        det_score = data.det_score
         det_gt = data.tracking_id
 
         edge_index_inter = inter_graph.edge_index
@@ -199,9 +200,9 @@ class Tracker(object):
                 inactive_trk.append(i)
 
         # update track info
-        self._update_track_info(match, unmat_det, inactive_trk, det_boxes,
-                                det_velo, det_class, det_score, det_yolo_class,
-                                det_yolo_score, det_embedding)
+        self._update_track_info(affinity_dense, match, unmat_det, inactive_trk, det_boxes,
+                                det_velo, det_class, det_score, det_score_pred, det_yolo_score,
+                                det_yolo_class, det_embedding)
 
         # update track state
         self._update_track_state(match, unmat_det, inactive_trk, track_latent_feat, det_latent_feat,
@@ -210,8 +211,8 @@ class Tracker(object):
         assert len(self.track_info) == self.track_state['features'].size(0)
 
 
-    def _update_track_info(self, matches, new_dets, inactive_tracks,
-                           det_boxes, det_velo, det_class, det_score, 
+    def _update_track_info(self, affinity, matches, new_dets, inactive_tracks,
+                           det_boxes, det_velo, det_class, det_score, det_score_pred,
                            det_yolo_score, det_yolo_class, det_embedding):
         '''
         Update external information for writing results.
@@ -228,14 +229,12 @@ class Tracker(object):
             rotation = Quaternion(axis=[0, 0, 1], angle=yaw.cpu().numpy())
             class_id = det_class[m[1]]
             class_score = det_score[m[1]].cpu().numpy()
+            class_aff = (affinity[m[0], m[1]]).cpu().numpy()
             base_ids = list(NuScenesClassesBase.values())
             if class_id not in base_ids:
                 class_id = det_yolo_class[m[1]]
-                class_score = det_yolo_score[m[1]].cpu().numpy()
-                # if torch.all(self.track_state['embedding'][m[0]] == 0) and det_yolo_class[m[1]] != 7:
-                #     class_id == det_yolo_class[m[1]]
-                # else: 
-                #     class_id = MAPPER[torch.argmax(self.track_state['embedding'][m[0]].half() @ text_features.t()).cpu()]
+                class_score = det_score_pred[m[1]].cpu().numpy()
+                # class_score = det_yolo_score[m[1]].cpu().numpy()
             track = {
                 "translation": det_boxes[m[1], :3].cpu().numpy(),
                 "size": det_boxes[m[1], 3:6].cpu().numpy(),
@@ -257,8 +256,8 @@ class Tracker(object):
             base_ids = list(NuScenesClassesBase.values())
             if class_id not in base_ids:
                 class_id = det_yolo_class[i]
-                class_score = det_yolo_score[i].cpu().numpy()
-                # class_id = MAPPER[torch.argmax(det_embedding[i].half() @ text_features.t()).cpu()]
+                class_score = det_score_pred[m[1]].cpu().numpy()
+                # class_score = det_yolo_score[i].cpu().numpy()
             track = {
                 "translation": det_boxes[i, :3].cpu().numpy(),
                 "size": det_boxes[i, 3:6].cpu().numpy(),

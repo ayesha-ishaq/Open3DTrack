@@ -45,8 +45,10 @@ def category_to_tracking_name_base(category_name):
     """
     tracking_mapping = {
         'vehicle.car': 'car',
-        'vehicle.motorcycle': 'motorcycle',
-        'vehicle.trailer': 'trailer',
+        'human.pedestrian.adult': 'pedestrian',
+        'human.pedestrian.child': 'pedestrian',
+        'human.pedestrian.construction_worker': 'pedestrian',
+        'human.pedestrian.police_officer': 'pedestrian',
         'vehicle.truck': 'truck'
     }
 
@@ -68,9 +70,8 @@ NuScenesClasses = {
 
 NuScenesClassesBase = {
     'car' : 0,
+    'pedestrian' : 1,
     'truck' : 3,
-    'motorcycle' : 5,
-    'trailer' : 6,
 }
 
 NOVEL_LABELS = ['pedestrian','bicycle', 'bus']
@@ -81,3 +82,28 @@ MAPPER = [1, 2, 4]
 
 # NUSCENES_LABELS = ['car', 'person', 'pedestrian', 'bicycle', 'truck', 'bus', 'motorcycle', 'motorbike', 'scooter', 'trailer', 'semi trailer', 'cargo container', 'shipping container', 'freight container', 'camper', 'recreational vehicle']
 # MAPPER = [0, 1, 1, 2, 3, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6]
+
+# def category_to_tracking_name(category_name: str) -> Optional[str]:
+#     """
+#     Default label mapping from nuScenes to nuScenes tracking classes.
+#     :param category_name: Generic nuScenes class.
+#     :return: nuScenes tracking class.
+#     """
+#     tracking_mapping = {
+#         'vehicle.bicycle': 'bicycle',
+#         'vehicle.bus.bendy': 'bus',
+#         'vehicle.bus.rigid': 'bus',
+#         'vehicle.car': 'car',
+#         'vehicle.motorcycle': 'motorcycle',
+#         'human.pedestrian.adult': 'pedestrian',
+#         'human.pedestrian.child': 'pedestrian',
+#         'human.pedestrian.construction_worker': 'pedestrian',
+#         'human.pedestrian.police_officer': 'pedestrian',
+#         'vehicle.trailer': 'trailer',
+#         'vehicle.truck': 'truck'
+#     }
+
+#     if category_name in tracking_mapping:
+#         return tracking_mapping[category_name]
+#     else:
+#         return None

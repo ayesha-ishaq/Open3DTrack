@@ -292,23 +292,11 @@ def main(output_dir, save_dir):
                    'token': frame['token']
                   }
                 scene_result.append(content)
-            split_data[f'{scene_id:04d}'] = scene_result
-        with h5py.File(save_output, 'w') as h5file:
-            for scene_id, scene_content in split_data.items():
-                scene_group = h5file.create_group(scene_id)
-                print(type(scene_content))
-                for i, item in enumerate(scene_content):
-                    print(type(item))
-                    item_group = scene_group.create_group(str(i))
-                    for key, value in item.items():
-                        if isinstance(value, dict):
-                            # If the value is a dictionary, create a subgroup for it
-                            subgroup = item_group.create_group(key)
-                            for k, v in value.items():
-                                subgroup.create_dataset(k, data=np.array(v))
-                        else:
-                            # Save non-dict and non-list items directly
-                            item_group.create_dataset(key, data=np.array(value))
+                print(np.min(content['dets']['yolo_score']))
+                # for i, each in enumerate(content['dets']['score']):
+                #     print(each, content['dets']['yolo_score'][i])
+            # split_data[f'{scene_id:04d}'] = scene_result
+        
                         
 
                         

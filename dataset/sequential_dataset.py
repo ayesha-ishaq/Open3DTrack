@@ -36,7 +36,7 @@ class Sequence(Dataset):
         det_velo = detections['velocity']
         det_category = detections['class']
         # det_class_one_hot = torch_one_hot(det_category, self.num_classes)
-        det_score = torch.unsqueeze(detections['score'], 1)
+        det_score = detections['score']
         det_embedding = detections['embedding']
         det_yolo_class = detections['yolo_class']
         det_yolo_score = detections['yolo_score']

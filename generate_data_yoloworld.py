@@ -221,10 +221,10 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
 
     print('Generating detection and ground truth sequences...')
     result = []
-    clip = load_clip()
-    labelset = list(NuScenesClasses.keys())
-    text_features = extract_clip_feature(labelset, clip).detach().cpu().numpy()
-    text_features = np.vstack((text_features, np.zeros((1, 768))))
+    # clip = load_clip()
+    # labelset = list(NuScenesClasses.keys())
+    # text_features = extract_clip_feature(labelset, clip).detach().cpu().numpy()
+    # text_features = np.vstack((text_features, np.zeros((1, 768))))
 
     cameras = ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"]
 
@@ -299,7 +299,7 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
                     frame_dets_dict = simpletrack_nms(frame_dets_dict, iou_threshold=0.1)
                     
                 # get 2D bounding box for nms detections only
-                embedding = np.zeros((len(frame_dets_dict['translation']), 768))
+                # embedding = np.zeros((len(frame_dets_dict['translation']), 768))
                 yolo_class = np.zeros(len(frame_dets_dict['translation']))
                 yolo_score = np.zeros(len(frame_dets_dict['translation']))
                 frame_det_pts_features = []
@@ -344,11 +344,11 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
                         class_name = 7
                         class_score = 0.01
             
-                    embedding[nms_dets_index] = text_features[int(class_name)]
+                    # embedding[nms_dets_index] = text_features[int(class_name)]
                     yolo_class[nms_dets_index] = int(class_name)
                     yolo_score[nms_dets_index] = class_score
                 
-                frame_dets_dict['embedding'] = embedding.astype(np.float32) # [N, 768]
+                # frame_dets_dict['embedding'] = embedding.astype(np.float32) # [N, 768]
                 frame_dets_dict['yolo_class'] = yolo_class.astype(np.int32) # [N]
                 frame_dets_dict['yolo_score'] = yolo_score.astype(np.float32) # [N]
                 

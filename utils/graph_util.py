@@ -14,6 +14,7 @@ from torch_geometric.utils.unbatch import unbatch
 
 from utils.data_util import BipartiteData, NuScenesClassesBase
 
+
 def adj_to_edge_index(adj):
     return torch.nonzero(adj).transpose(1, 0).long()
 
@@ -60,40 +61,33 @@ def embedding_velocity_adj(boxes, embeddings, time_diff=0.5):
     adj = torch.le(center_dist, distance_thresh).int()
     return adj
 
-def velocity_adj(boxes, classes, velo, time_diff=0.5):
+def velocity_adj(boxes, velo, time_diff=0.5):
+
+    # track_boxes = boxes[0]
+    # detection_boxes = boxes[1]
+
+    # center_dist = torch.cdist(track_boxes[:, :2], detection_boxes[:, :2], p=2.0)
+    # velo_thresh = (torch.norm(velo[0].detach(), p=2, dim=1))*(0.1) + 3
+
+    # adj = torch.le(center_dist, velo_thresh.unsqueeze(1)).int()
 
     track_boxes = boxes[0]
     detection_boxes = boxes[1]
 
-    # iou = torch.FloatTensor(torch.Size((track_boxes.shape[0], detection_boxes.shape[0]))).zero_()
-    # iou3d_nms_cuda.boxes_iou_bev_cpu(track_boxes.contiguous(), detection_boxes.contiguous(), iou)
+    # Compute distances over each component (x and y)
+    dist_x = torch.cdist(track_boxes[:, 0:1], detection_boxes[:, 0:1], p=2.0)
+    dist_y = torch.cdist(track_boxes[:, 1:2], detection_boxes[:, 1:2], p=2.0)
 
-    center_dist = torch.cdist(track_boxes[:, :2], detection_boxes[:, :2], p=2.0)
-    size_diff = torch.cdist(track_boxes[:, 3:6], detection_boxes[:, 3:6], p=2.0)
-    velo_diff = torch.cdist(velo[0].detach(), velo[1], p=2.0)
+    # Compute velocity threshold for each component
+    velo_thresh_x = (torch.abs(velo[0][:, 0].detach()) * (4/15) + 2)
+    velo_thresh_y = (torch.abs(velo[0][:, 1].detach()) * (4/15) + 2)
 
-    cost = center_dist + 2 * size_diff + velo_diff
+    # Combine thresholds and distances to create a combined threshold check
+    adj_x = torch.le(dist_x, velo_thresh_x.unsqueeze(1)).int()
+    adj_y = torch.le(dist_y, velo_thresh_y.unsqueeze(1)).int()
 
-    # Number of lowest cost detections to keep
-    num_detections = cost.shape[1]
-
-    # Set k to the smaller value between 10 and the number of detections
-    k = min(15, num_detections)
-
-    # Get the 10 lowest costs and their indices for each track
-    _, topk_indices = torch.topk(cost, k, dim=1, largest=False)
-    adj = torch.zeros_like(cost, dtype=torch.int32)
-    adj.scatter_(1, topk_indices, 1)
-
-    # cls_mask = torch.eq(classes[0].unsqueeze(1), classes[1].unsqueeze(0))
-    # unknown_1 = torch.eq(classes[0].unsqueeze(1), 7)
-    # unknown_2 = torch.eq(classes[1].unsqueeze(0), 7)
-    # combined = unknown_1 | unknown_2
-    # cls_mask = cls_mask | combined
-    # cls_mask = torch.logical_not(cls_mask).float() * 2
-    # cost = cost.to('cuda:0') + cls_mask
-    # thresh = 5
-    # adj = torch.le(center_dist, track_velocity.unsqueeze(1)).int()
+    # Combined adjustment matrix (1 where both x and y are within thresholds)
+    adj = adj_x * adj_y
     
     return adj
 
@@ -174,8 +168,8 @@ def build_inter_graph(det_boxes, track_boxes, det_class, track_class,
         # TODO: update with precise time stamp
         pred_boxes_t[:, :2] += velo_t.detach() * age_t.unsqueeze(1) * 0.5 # s1 = s0 + v0 * delta_t
 
-        # adj = velocity_adj((pred_boxes_t, boxes_d), (cls_t, cls_d), (velo_t, velo_d))
-        adj = class_velocity_adj((pred_boxes_t, boxes_d), (cls_t, cls_d))
+        adj = velocity_adj((pred_boxes_t, boxes_d), (velo_t, velo_d))
+        # adj = class_velocity_adj((pred_boxes_t, boxes_d), (cls_t, cls_d))
         edge_index = adj_to_edge_index(adj)
 
         diff_box = boxes_d[edge_index[1, :], :] - boxes_t[edge_index[0, :], :]

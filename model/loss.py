@@ -23,7 +23,8 @@ class Loss(nn.Module):
         self.velo_loss_weight = velo_loss_weight
         self.normalize_by_positive = normalize_by_positive
     
-    def forward(self, prediction, target, pred_velo, target_velo, velo_mask):
+    def forward(self, prediction, target, pred_velo, target_velo, velo_mask,
+                det_gt, det_score):
 
         losses = 0.0
         normalizer = target.count_nonzero() if self.normalize_by_positive \
@@ -41,6 +42,10 @@ class Loss(nn.Module):
         velo_loss *= velo_mask.float().unsqueeze(1)
         velo_loss = torch.sum(velo_loss) / (velo_loss.size(0) * velo_loss.size(1))
         losses += self.velo_loss_weight * velo_loss
+
+        score_loss_det = F.mse_loss(det_score.squeeze(1), det_gt, reduction='none')
+        score_loss_det = torch.sum(score_loss_det) / (score_loss_det.size(0))
+        losses += 0.5 * score_loss_det
 
         return losses
     

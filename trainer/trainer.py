@@ -79,8 +79,9 @@ class Trainer(BaseTrainer):
                                    batch_det_class, batch_track_class,
                                    batch_det_yolo_class, batch_track_yolo_class,
                                    batch_det_embedding, batch_track_embedding,
-                                   batch_det_gt, batch_track_gt, batch_track_age,
-                                   det_batch, track_batch
+                                   batch_det_gt, batch_track_gt,
+                                   batch_det_score, batch_track_score,
+                                   batch_track_age, det_batch, track_batch
                                    ):
         '''
         Unbatch each batch element since the matching inside a graph is not parallelizeable.
@@ -115,6 +116,9 @@ class Trainer(BaseTrainer):
         det_gt_list = unbatch(batch_det_gt, det_batch)
         track_gt_list = unbatch(batch_track_gt, track_batch)
 
+        det_score_list = unbatch(batch_det_score, det_batch)
+        track_score_list = unbatch(batch_track_score, track_batch)
+
         track_age_list = unbatch(batch_track_age, track_batch)
 
 
@@ -122,11 +126,11 @@ class Trainer(BaseTrainer):
 
         for (inter_graph, affinity, det_feat, trk_feat, det_boxes, trk_boxes, 
              det_velo, trk_velo, det_class, trk_class, det_yolo_class, trk_yolo_class, 
-             det_emb, trk_emb, det_gt, trk_gt, trk_age) in zip(inter_graph_list, affinity_list, 
+             det_emb, trk_emb, det_gt, trk_gt, det_score, trk_score, trk_age) in zip(inter_graph_list, affinity_list, 
              det_feat_list, track_feat_list, det_boxes_list, track_boxes_list, 
              det_velo_list, track_velo_list, det_class_list, track_class_list, 
              det_yolo_class_list, track_yolo_class_list,det_embedding_list, track_embedding_list,
-             det_gt_list, track_gt_list, track_age_list):
+             det_gt_list, track_gt_list, det_score_list, track_score_list,track_age_list):
 
             edge_index_inter = inter_graph.edge_index
             num_tracks = inter_graph.size_s
@@ -167,6 +171,8 @@ class Trainer(BaseTrainer):
                                       inactive_trk, weight=self.embedding_update_weight)
             new_track_gt = update_field(det_gt, trk_gt, match, unmat_det,
                                         inactive_trk, update_with_dets=True)
+            new_track_score = update_field(det_score, trk_score, match, unmat_det,
+                                        inactive_trk, update_with_dets=True)
 
             det_age = torch.ones(len(match) + len(unmat_det), dtype=torch.int, device=trk_age.device)
             trk_age_unmat = trk_age[inactive_trk] + 1
@@ -186,6 +192,7 @@ class Trainer(BaseTrainer):
                                   yolo_class=new_track_yolo_class,
                                   embedding=new_track_embedding,
                                   tracking_id=new_track_gt,
+                                  score=new_track_score,
                                   ages=new_track_age)
             data.append(new_track_data)
         
@@ -218,6 +225,7 @@ class Trainer(BaseTrainer):
                 track_embedding = data.det_embedding
                 track_batch = data.x_batch
                 track_gt = data.tracking_id
+                track_score_gt = data.det_score
                 track_age = torch.ones_like(track_class, dtype=torch.int)
                 dist_thresh, size_thresh = (5, 2)
 
@@ -228,6 +236,7 @@ class Trainer(BaseTrainer):
                 det_class = data.det_class
                 det_batch = data.x_batch
                 det_gt = data.tracking_id
+                det_score_gt = data.det_score
                 det_velo = data.det_velo
                 det_yolo_class = data.det_yolo_class
                 det_embedding = data.det_embedding
@@ -235,10 +244,6 @@ class Trainer(BaseTrainer):
                 velo_mask = data.next_exist
 
                 # Build inter graph between detections and tracks
-                # CHANGE: USE TRAINED THRESHOLDS FOR CLSS AGNOSTIC EDGE GRAPHS
-                # batched_inter_graph = graph_util.build_thresh_inter_graph(
-                #     det_boxes, track_boxes,track_velo, track_age, 
-                #     det_batch, track_batch, dist_thresh, size_thresh)
                 batched_inter_graph = graph_util.build_inter_graph(
                     det_boxes, track_boxes, det_yolo_class, track_yolo_class,
                     track_velo, det_velo, track_age, det_batch, track_batch)
@@ -246,15 +251,13 @@ class Trainer(BaseTrainer):
                 edge_attr_inter = batched_inter_graph.edge_attr
 
                 # Forward pass
-                # CHANGE THRESHOLD RETURNED
-                affinity, track_feat, det_feat, pred_velo = self.model(
-                    dets, # det_points, det_pt_features,
-                    tracks, # track_points, track_pt_features,
-                    edge_index_det, edge_index_track, edge_index_inter, edge_attr_inter)
+                affinity, track_feat, det_feat, pred_velo, det_score = self.model(
+                    dets, tracks, edge_index_det, edge_index_track, edge_index_inter, edge_attr_inter)
 
                 # loss
                 target = self.criterion.generate_target(track_gt, det_gt, edge_index_inter)
-                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask)
+                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask,
+                                     det_score_gt, det_score)
                 losses[f'loss/time_stamp_{i+1}'] = loss
 
                 # CHANGE DETACH AND USE PREDICTED THRESHOLDS
@@ -267,7 +270,7 @@ class Trainer(BaseTrainer):
                         affinity_sigmoid, batched_inter_graph, det_feat, track_feat,
                         det_boxes, track_boxes, pred_velo, track_velo, det_class, track_class,
                         det_yolo_class, track_yolo_class, det_embedding, track_embedding, det_gt, 
-                        track_gt, track_age, det_batch, track_batch)
+                        track_gt, det_score_gt, track_score_gt, track_age, det_batch, track_batch)
 
                     if updated_track_data is not None:
                         tracks = updated_track_data.x
@@ -280,6 +283,7 @@ class Trainer(BaseTrainer):
                         track_batch = updated_track_data.batch
                         track_gt = updated_track_data.tracking_id
                         track_age = updated_track_data.ages
+                        track_score_gt = updated_track_data.score
 
         return losses
      
@@ -363,6 +367,7 @@ class Trainer(BaseTrainer):
                 det_yolo_score = data.det_yolo_score
                 det_embedding = data.det_embedding
                 det_gt = data.tracking_id
+                det_score_gt = data.det_score
                 velo_target = data.velo_target
                 velo_mask = data.next_exist
 
@@ -370,11 +375,6 @@ class Trainer(BaseTrainer):
                 track_batch = torch.zeros_like(self.tracker.track_state['classes'],
                                                dtype=torch.long, device=det_class.device)
 
-                # CHANGE: USE TRAINED THRESHOLDS FOR CLSS AGNOSTIC EDGE GRAPHS
-                # inter_graph = graph_util.build_thresh_inter_graph(
-                #     det_boxes, self.tracker.track_state['boxes'],
-                #     self.tracker.track_state['velo'], self.tracker.track_state['age'],
-                #     det_batch, track_batch, dist_thresh, size_thresh).to_data_list()[0] # Batch size is 1 here
                 inter_graph = graph_util.build_inter_graph(
                     det_boxes, self.tracker.track_state['boxes'],
                     det_yolo_class, self.tracker.track_state['yolo_class'],
@@ -383,8 +383,7 @@ class Trainer(BaseTrainer):
                 edge_index_inter = inter_graph.edge_index
                 edge_attr_inter = inter_graph.edge_attr
 
-                # CHANGE THRESHOLD RETURNED
-                affinity, track_feat, det_feat, pred_velo = self.model(
+                affinity, track_feat, det_feat, pred_velo, det_score = self.model(
                     dets, 
                     self.tracker.track_state['features'],                  
                     edge_index_det, self.tracker.track_state['edge_index'],
@@ -393,7 +392,8 @@ class Trainer(BaseTrainer):
                 # loss
                 target = self.criterion.generate_target(
                     self.tracker.track_state['gt_tracking_id'], det_gt, edge_index_inter)
-                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask)
+                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask,
+                                      det_score_gt, det_score)
 
                 self.valid_metrics.update('loss', loss)
 
@@ -402,7 +402,8 @@ class Trainer(BaseTrainer):
 
                 # track step
                 affinity = torch.sigmoid(affinity[-1])
-                self.tracker.track_step(affinity, pred_velo, inter_graph, data, track_feat, det_feat)
+                self.tracker.track_step(affinity, pred_velo, inter_graph, data, track_feat, det_feat,
+                                        det_score)
         
             frame_annos = []
             unsorted_track_info = copy.deepcopy(self.tracker.track_info)
@@ -428,39 +429,46 @@ class Trainer(BaseTrainer):
         
         return annos
     def _align_class_labels(self, annos):
-        unknown_count = 0
-        total_count = 0
+        
         tracking_labels = {}
+        unknown_count = {}
+        tracking_score = {}
         for frame, frame_list in annos.items():
             for det in frame_list:
                 if det['tracking_name'] != 'unknown':
                     try:
                         tracking_labels[det['tracking_id']].append(det['tracking_name'])
-                        total_count+=1
+                        tracking_score[det['tracking_id']].append(det['tracking_score'])
                     except:
                         tracking_labels[det['tracking_id']] = [det['tracking_name']]
+                        tracking_score[det['tracking_id']] = [det['tracking_score']]
                 else:
-                    unknown_count+=1
-        print('unknown pert', unknown_count/(unknown_count+total_count))
+                    try:
+                        unknown_count[det['tracking_id']] += 1
+                    except:
+                        unknown_count[det['tracking_id']] = 1
+
         for key, val in tracking_labels.items():
             val = np.array(val)
 
-        dropped_id = []
         for frame, frame_list in annos.items():
             indices_to_remove = []
             for i, det in enumerate(frame_list):
                 if det['tracking_id'] not in tracking_labels.keys():
-                    dropped_id.append(det['tracking_id'])
                     indices_to_remove.append(i)
                 else:
                     unique_values, counts = np.unique(tracking_labels[det['tracking_id']], return_counts=True)
+                    if  det['tracking_id'] in unknown_count.keys():
+                        tracking_confidence = np.max(counts)/(np.sum(counts) + unknown_count[det['tracking_id']])
+                    else:
+                        tracking_confidence = np.max(counts)/(np.sum(counts))
+                    
                     det['tracking_name'] = unique_values[np.argmax(counts)]
+
             indices_to_remove.sort(reverse=True)
             for index in indices_to_remove:
                 frame_list.pop(index)
-        unique_values = np.unique(np.array(dropped_id))
-        print('dropped tracks:', unique_values.shape)
-        print('total tracks:',len(list(tracking_labels.keys())))
+
             
 
         return annos
@@ -500,6 +508,7 @@ class Trainer(BaseTrainer):
             json_output = val_outputs / f'tracking_result_epoch_{epoch}.json'
             with open(json_output, "w") as f:
                 json.dump(nusc_annos, f)
+            print('Saved Inference Results')
             
             metrics_summary = eval_nusc_tracking(json_output, 'val', val_outputs, self.nusc_path,
                                                  verbose=True,

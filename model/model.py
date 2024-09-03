@@ -32,6 +32,8 @@ class STTransformerModel(BaseModel):
         self.embedding = nn.Linear(9, self.d_model)
         self.embedding_edge = nn.Linear(10, self.d_model)
 
+        # self.embedding_score = nn.Linear(11, self.d_model)
+
         spatial_encoder_layer = TransformerEncoderLayer(self.d_model, self.nhead, self.dropout_p,
                                                         norm_first=self.norm_first)
         decoder_layer = TransformerDecoderLayer(self.d_model, self.nhead, self.dropout_p,
@@ -48,6 +50,8 @@ class STTransformerModel(BaseModel):
 
         self.affinity = FFN(self.d_model)
         self.velocity = FFN(self.d_model, 2)
+        self.score = FFN(self.d_model)
+        self.sigmoid = nn.Sigmoid()
 
     
     def forward(self, dets_in, #dets_pts, dets_pt_fts, 
@@ -62,7 +66,7 @@ class STTransformerModel(BaseModel):
 
         else:
             tracks = tracks_in
-            
+        
         # det_emb = self._pointpillars_block(dets_pts, dets_pt_fts)
         # dets = self.embedding(torch.cat([dets_in, det_emb.squeeze(dim=-1)], -1)) 
         dets = self.embedding(dets_in)
@@ -80,9 +84,9 @@ class STTransformerModel(BaseModel):
 
         affinity = [self.affinity(edge_attr_inter)]
         pred_velo = self.velocity(dets)
-
-        # CHANGE RETURN THRESHOLD
-        return affinity, tracks, dets, pred_velo
+        score_dets = self.sigmoid(self.score(dets))
+        
+        return affinity, tracks, dets, pred_velo, score_dets
 
     def _pointpillars_block(self, det_pts, det_features):
         
@@ -97,7 +101,6 @@ class STTransformerModel(BaseModel):
        
         return x
 
-    
     def _enc_block(self, x, edge_index):
         for spt_layer in self.spatial_encoders:
             x = spt_layer(x, edge_index)

@@ -23,8 +23,9 @@ def run_nuscenes(model, scenes):
             for cam in cameras:
                 camera = nusc.get('sample_data', current_sample['data'][cam])
                 img_path = os.path.join(nusc.dataroot, camera['filename'])
-                results = model.predict(img_path, verbose=False)
+                results = model.predict(img_path, iou=0.01, conf=0.01, verbose=False)
                 detection[scene_name][current_token][cam] = results[0].boxes.data.tolist()
+                # results[0].save(filename='result{}.jpg'.format(frame_id))
 
             if current_token == last_token:
                 break

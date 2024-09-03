@@ -10,6 +10,7 @@ from typing import Tuple, List, Dict
 from pathlib import Path
 import os
 import cv2
+import multiprocessing as mp
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -284,8 +285,10 @@ class TrackingEvalWrapper(TrackingEval):
 
 
 def eval_nusc_tracking(res_path, eval_set="val", output_dir=None, root_path=None, verbose=True,
-                       num_vis=10, vis_only=False, vis_score_thresh=0.0, eval_range=50.0):
+                       num_vis=0, vis_only=False, vis_score_thresh=0.0, eval_range=50.0):
     
+    # os.makedirs(output_dir, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     cfg = track_configs("tracking_nips_2019")
     nusc_eval = TrackingEvalWrapper(
         config=cfg,
@@ -310,3 +313,33 @@ def eval_nusc_tracking(res_path, eval_set="val", output_dir=None, root_path=None
 #metrics_summary = eval_nusc_tracking(json_output, 'custom_val', Path(val_outputs), nusc_path,
 #                                        verbose=True,
 #                                        num_vis=0, vis_only=False)
+
+if __name__=="__main__":
+
+    json_output = "/home/ayesha.ishaq/Desktop/3DMOTFormer/open_eval/tracking_result_epoch_ex10.json"
+    val_outputs = "/home/ayesha.ishaq/Desktop/3DMOTFormer/open_eval_10"
+    nusc_path = "/l/users/ayesha.ishaq/nuScenes/"
+
+    metrics_summary = eval_nusc_tracking(json_output, 'custom', Path(val_outputs), nusc_path,
+                                       verbose=True,
+                                       num_vis=0, vis_only=False)
+
+    # param_list = [
+    #     ((json_output + "ex1.json"), "custom", (val_outputs+"_1"), nusc_path),
+    #     ((json_output + "ex2.json"), "custom", (val_outputs+"_2"), nusc_path),
+    #     ((json_output + "ex3.json"), "custom", (val_outputs+"_3"), nusc_path),
+    #     ((json_output + "ex4.json"), "custom", (val_outputs+"_4"), nusc_path)
+    # ]
+
+    # # Create a pool of worker processes
+    # pool = mp.Pool(processes=4)
+
+    # # Use starmap to pass multiple arguments to the function in parallel
+    # results = pool.starmap(eval_nusc_tracking, param_list)
+
+    # # Close the pool and wait for the work to finish
+    # pool.close()
+    # pool.join()
+
+    # # Print the results
+    # print(results)
