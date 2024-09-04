@@ -20,7 +20,7 @@ from base import BaseTrainer
 from utils import inf_loop, MetricTracker
 from utils import match_util
 import utils.graph_util as graph_util
-from eval.tracker import Tracker, update_field, update_yolo_class, update_feature, update_embedding
+from eval.tracker import Tracker, update_field, update_yolo_class, update_feature
 from eval.nusc_eval import eval_nusc_tracking
 
 
@@ -44,7 +44,6 @@ class Trainer(BaseTrainer):
         self.active_track_thresh = active_track_thresh
         self.max_age = self.config['trainer']['max_age']
         self.feature_update_weight = self.config['trainer']['feature_update_weight']
-        self.embedding_update_weight = self.config['trainer']['embedding_update_weight']
         self.hungarian = self.config['trainer']['hungarian_matching']
         self.graph_truncation_dist = self.config['graph_truncation_dist']
         self.nusc_path = self.config['trainer']['nusc_path']
@@ -53,7 +52,6 @@ class Trainer(BaseTrainer):
         self.tracker = Tracker(max_age=self.max_age,
                                active_track_thresh=self.active_track_thresh,
                                feature_update_weight=self.feature_update_weight,
-                               embedding_update_weight=self.embedding_update_weight,
                                hungarian=self.hungarian,
                                graph_truncation_dist=self.graph_truncation_dist)
    
@@ -78,7 +76,6 @@ class Trainer(BaseTrainer):
                                    batch_det_velo, batch_track_velo,
                                    batch_det_class, batch_track_class,
                                    batch_det_yolo_class, batch_track_yolo_class,
-                                   batch_det_embedding, batch_track_embedding,
                                    batch_det_gt, batch_track_gt,
                                    batch_det_score, batch_track_score,
                                    batch_track_age, det_batch, track_batch
@@ -110,9 +107,6 @@ class Trainer(BaseTrainer):
         det_yolo_class_list = unbatch(batch_det_yolo_class, det_batch)
         track_yolo_class_list = unbatch(batch_track_yolo_class, track_batch)
 
-        det_embedding_list = unbatch(batch_det_embedding, det_batch)
-        track_embedding_list = unbatch(batch_track_embedding, track_batch)
-
         det_gt_list = unbatch(batch_det_gt, det_batch)
         track_gt_list = unbatch(batch_track_gt, track_batch)
 
@@ -126,11 +120,11 @@ class Trainer(BaseTrainer):
 
         for (inter_graph, affinity, det_feat, trk_feat, det_boxes, trk_boxes, 
              det_velo, trk_velo, det_class, trk_class, det_yolo_class, trk_yolo_class, 
-             det_emb, trk_emb, det_gt, trk_gt, det_score, trk_score, trk_age) in zip(inter_graph_list, affinity_list, 
+             det_gt, trk_gt, det_score, trk_score, trk_age) in zip(inter_graph_list, affinity_list, 
              det_feat_list, track_feat_list, det_boxes_list, track_boxes_list, 
              det_velo_list, track_velo_list, det_class_list, track_class_list, 
-             det_yolo_class_list, track_yolo_class_list,det_embedding_list, track_embedding_list,
-             det_gt_list, track_gt_list, det_score_list, track_score_list,track_age_list):
+             det_yolo_class_list, track_yolo_class_list, det_gt_list, track_gt_list,
+             det_score_list, track_score_list,track_age_list):
 
             edge_index_inter = inter_graph.edge_index
             num_tracks = inter_graph.size_s
@@ -166,9 +160,6 @@ class Trainer(BaseTrainer):
                                            inactive_trk, update_with_dets=True)
             new_track_yolo_class = update_yolo_class(det_yolo_class, trk_yolo_class,
                                            match, unmat_det, inactive_trk)
-            new_track_embedding = update_embedding(det_emb, trk_emb, 
-                                      det_yolo_class, trk_yolo_class, match, unmat_det,
-                                      inactive_trk, weight=self.embedding_update_weight)
             new_track_gt = update_field(det_gt, trk_gt, match, unmat_det,
                                         inactive_trk, update_with_dets=True)
             new_track_score = update_field(det_score, trk_score, match, unmat_det,
@@ -190,7 +181,6 @@ class Trainer(BaseTrainer):
                                   velo=new_track_velo,
                                   classes=new_track_class,
                                   yolo_class=new_track_yolo_class,
-                                  embedding=new_track_embedding,
                                   tracking_id=new_track_gt,
                                   score=new_track_score,
                                   ages=new_track_age)
@@ -222,7 +212,6 @@ class Trainer(BaseTrainer):
                 edge_index_track = data.edge_index
                 track_class = data.det_class
                 track_yolo_class = data.det_yolo_class
-                track_embedding = data.det_embedding
                 track_batch = data.x_batch
                 track_gt = data.tracking_id
                 track_score_gt = data.det_score
@@ -239,7 +228,6 @@ class Trainer(BaseTrainer):
                 det_score_gt = data.det_score
                 det_velo = data.det_velo
                 det_yolo_class = data.det_yolo_class
-                det_embedding = data.det_embedding
                 velo_target = data.velo_target
                 velo_mask = data.next_exist
 
@@ -269,8 +257,8 @@ class Trainer(BaseTrainer):
                     updated_track_data = self._batch_update_tracks(
                         affinity_sigmoid, batched_inter_graph, det_feat, track_feat,
                         det_boxes, track_boxes, pred_velo, track_velo, det_class, track_class,
-                        det_yolo_class, track_yolo_class, det_embedding, track_embedding, det_gt, 
-                        track_gt, det_score_gt, track_score_gt, track_age, det_batch, track_batch)
+                        det_yolo_class, track_yolo_class, det_gt, track_gt, det_score_gt,
+                        track_score_gt, track_age, det_batch, track_batch)
 
                     if updated_track_data is not None:
                         tracks = updated_track_data.x
@@ -278,7 +266,6 @@ class Trainer(BaseTrainer):
                         track_velo = updated_track_data.velo
                         track_class = updated_track_data.classes
                         track_yolo_class = updated_track_data.yolo_class
-                        track_embedding = updated_track_data.embedding
                         edge_index_track = updated_track_data.edge_index
                         track_batch = updated_track_data.batch
                         track_gt = updated_track_data.tracking_id
@@ -365,7 +352,6 @@ class Trainer(BaseTrainer):
                 det_velo = data.det_velo
                 det_yolo_class = data.det_yolo_class
                 det_yolo_score = data.det_yolo_score
-                det_embedding = data.det_embedding
                 det_gt = data.tracking_id
                 det_score_gt = data.det_score
                 velo_target = data.velo_target

@@ -86,7 +86,6 @@ class PatchwiseDataset(BaseDataset):
             det_category = detections['class']
             # det_class_one_hot = torch_one_hot(det_category, self.num_classes)
             det_score = detections['score']
-            det_embedding = detections['embedding']
             det_yolo_class = detections['yolo_class']
             det_yolo_score = detections['yolo_score']
 
@@ -123,10 +122,10 @@ class PatchwiseDataset(BaseDataset):
                               det_score=det_score,
                               det_yolo_score=det_yolo_score,
                               det_yolo_class=det_yolo_class,
-                              det_embedding=det_embedding,
                               frame_id=torch.tensor(frame_id, dtype=torch.int),
                               next_exist=det_next_exist,
                               velo_target=velo_target,
+                              pos_target=pos_target
                               )
             seq_data.append(frame_data)
         

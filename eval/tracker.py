@@ -9,7 +9,7 @@ import torch
 
 import utils.graph_util as graph_util
 from utils.match_util import dets_tracks_matching
-from utils.data_util import NuScenesClasses, NuScenesClassesBase, NOVEL_LABELS, MAPPER
+from utils.data_util import NuScenesClasses, NuScenesClassesBase
 from utils.util import load_clip, extract_clip_feature
 
 def update_field(det_field, track_field, match, new_det, inactive_track,
@@ -113,7 +113,6 @@ class Tracker(object):
         track_class = data.det_class
         track_yolo_class = data.det_yolo_class
         track_yolo_score = data.det_yolo_score
-        track_embedding = data.det_embedding
         track_score = data.det_score
         track_gt = data.tracking_id
         track_age = torch.ones_like(track_class, dtype=torch.int)
@@ -121,11 +120,11 @@ class Tracker(object):
         self.track_state = {'features': track_feat,
                             'boxes': track_boxes,
                             'velo': track_velo,
+                            'pos': track_pos,
                             'edge_index': edge_index_track,
                             'classes': track_class,
                             'yolo_class' : track_yolo_class,
                             'yolo_score' : track_yolo_score,
-                            'embedding' : track_embedding,
                             'gt_tracking_id': track_gt,
                             'age': track_age
                             }
@@ -174,7 +173,6 @@ class Tracker(object):
         det_score = data.det_score
         det_yolo_class = data.det_yolo_class
         det_yolo_score = data.det_yolo_score
-        det_embedding = data.det_embedding
         det_gt = data.tracking_id
 
         edge_index_inter = inter_graph.edge_index
@@ -202,18 +200,18 @@ class Tracker(object):
         # update track info
         self._update_track_info(affinity_dense, match, unmat_det, inactive_trk, det_boxes,
                                 det_velo, det_class, det_score, det_score_pred, det_yolo_score,
-                                det_yolo_class, det_embedding)
+                                det_yolo_class)
 
         # update track state
         self._update_track_state(match, unmat_det, inactive_trk, track_latent_feat, det_latent_feat,
-                                 det_boxes, pred_velo, det_class, det_yolo_class, det_embedding, det_gt)
+                                 det_boxes, pred_velo, det_class, det_yolo_class, det_gt)
         
         assert len(self.track_info) == self.track_state['features'].size(0)
 
 
     def _update_track_info(self, affinity, matches, new_dets, inactive_tracks,
                            det_boxes, det_velo, det_class, det_score, det_score_pred,
-                           det_yolo_score, det_yolo_class, det_embedding):
+                           det_yolo_score, det_yolo_class):
         '''
         Update external information for writing results.
         Generate a dictionary with all neccessary information for nuscenes json format.
@@ -282,7 +280,7 @@ class Tracker(object):
         self.track_info = new_track_info
 
     def _update_track_state(self, matches, new_dets, inactive_tracks, track_latent_feat, det_latent_feat, 
-                            det_boxes, pred_velo, det_class, det_yolo_class, det_embedding, det_gt):
+                            det_boxes, pred_velo, det_class, det_yolo_class, det_gt):
         '''
         Update internal information for the network.
         This function is very similar to `Trainer._batch_update_tracks` function.
@@ -293,7 +291,6 @@ class Tracker(object):
         track_velo = self.track_state['velo']
         track_class = self.track_state['classes']
         track_yolo_class = self.track_state['yolo_class']
-        track_embedding = self.track_state['embedding']
         track_gt = self.track_state['gt_tracking_id']
         track_age = self.track_state['age']
 
@@ -307,9 +304,6 @@ class Tracker(object):
                                       inactive_tracks, update_with_dets=True)
         new_track_yolo_class = update_yolo_class(det_yolo_class, track_yolo_class, 
                                       matches, new_dets, inactive_tracks)
-        new_track_embedding = update_embedding(det_embedding, track_embedding, 
-                                      det_yolo_class, track_yolo_class, matches, new_dets,
-                                      inactive_tracks, weight=self.embedding_update_weight)
         new_track_gt = update_field(det_gt, track_gt, matches, new_dets,
                                       inactive_tracks, update_with_dets=True)
 

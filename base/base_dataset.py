@@ -135,7 +135,6 @@ class BaseDataset(Dataset):
         data['dets']['score'] = torch.from_numpy(data['dets']['score'])
         data['dets']['yolo_score'] = torch.from_numpy(data['dets']['yolo_score'])
         data['dets']['yolo_class'] = torch.from_numpy(data['dets']['yolo_class'])
-        data['dets']['embedding'] = torch.from_numpy(data['dets']['embedding'])
     
         data['gts']['translation'] = torch.from_numpy(data['gts']['translation'])
         data['gts']['size'] = torch.from_numpy(data['gts']['size'])
