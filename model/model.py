@@ -50,8 +50,8 @@ class STTransformerModel(BaseModel):
 
         self.affinity = FFN(self.d_model)
         self.velocity = FFN(self.d_model, 2)
-        self.score = FFN(self.d_model)
-        self.sigmoid = nn.Sigmoid()
+        # self.score = FFN(self.d_model)
+        # self.sigmoid = nn.Sigmoid()
 
     
     def forward(self, dets_in, #dets_pts, dets_pt_fts, 
@@ -84,9 +84,9 @@ class STTransformerModel(BaseModel):
 
         affinity = [self.affinity(edge_attr_inter)]
         pred_velo = self.velocity(dets)
-        score_dets = self.sigmoid(self.score(dets))
+        # score_dets = self.sigmoid(self.score(dets))
         
-        return affinity, tracks, dets, pred_velo, score_dets
+        return affinity, tracks, dets, pred_velo#, score_dets
 
     def _pointpillars_block(self, det_pts, det_features):
         

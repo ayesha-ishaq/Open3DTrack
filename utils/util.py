@@ -11,7 +11,6 @@ from pathlib import Path
 from itertools import repeat
 from collections import OrderedDict
 
-import clip
 
 def ensure_dir(dirname):
     dirname = Path(dirname)

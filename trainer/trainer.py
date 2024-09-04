@@ -239,13 +239,13 @@ class Trainer(BaseTrainer):
                 edge_attr_inter = batched_inter_graph.edge_attr
 
                 # Forward pass
-                affinity, track_feat, det_feat, pred_velo, det_score = self.model(
+                affinity, track_feat, det_feat, pred_velo = self.model(
                     dets, tracks, edge_index_det, edge_index_track, edge_index_inter, edge_attr_inter)
 
                 # loss
                 target = self.criterion.generate_target(track_gt, det_gt, edge_index_inter)
-                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask,
-                                     det_score_gt, det_score)
+                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask)
+                                    #  det_score_gt, det_score)
                 losses[f'loss/time_stamp_{i+1}'] = loss
 
                 # CHANGE DETACH AND USE PREDICTED THRESHOLDS
@@ -369,7 +369,7 @@ class Trainer(BaseTrainer):
                 edge_index_inter = inter_graph.edge_index
                 edge_attr_inter = inter_graph.edge_attr
 
-                affinity, track_feat, det_feat, pred_velo, det_score = self.model(
+                affinity, track_feat, det_feat, pred_velo = self.model(
                     dets, 
                     self.tracker.track_state['features'],                  
                     edge_index_det, self.tracker.track_state['edge_index'],
@@ -378,8 +378,8 @@ class Trainer(BaseTrainer):
                 # loss
                 target = self.criterion.generate_target(
                     self.tracker.track_state['gt_tracking_id'], det_gt, edge_index_inter)
-                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask,
-                                      det_score_gt, det_score)
+                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask)
+                                    #   det_score_gt, det_score)
 
                 self.valid_metrics.update('loss', loss)
 
@@ -389,7 +389,7 @@ class Trainer(BaseTrainer):
                 # track step
                 affinity = torch.sigmoid(affinity[-1])
                 self.tracker.track_step(affinity, pred_velo, inter_graph, data, track_feat, det_feat,
-                                        det_score)
+                                        det_score_gt)
         
             frame_annos = []
             unsorted_track_info = copy.deepcopy(self.tracker.track_info)

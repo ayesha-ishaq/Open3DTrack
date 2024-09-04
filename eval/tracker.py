@@ -120,7 +120,6 @@ class Tracker(object):
         self.track_state = {'features': track_feat,
                             'boxes': track_boxes,
                             'velo': track_velo,
-                            'pos': track_pos,
                             'edge_index': edge_index_track,
                             'classes': track_class,
                             'yolo_class' : track_yolo_class,
@@ -143,7 +142,7 @@ class Tracker(object):
             if class_id not in base_ids:
                 class_id = track_yolo_class[i]
                 class_score = track_yolo_score[i].cpu().numpy()
-                class_score = (0.1 + 0.8421*(class_score - 0.01))
+                # class_score = (0.1 + 0.8421*(class_score - 0.01))
             track = {
                 "translation": track_boxes[i, :3].cpu().numpy(),
                 "size": track_boxes[i, 3:6].cpu().numpy(),
@@ -231,8 +230,8 @@ class Tracker(object):
             base_ids = list(NuScenesClassesBase.values())
             if class_id not in base_ids:
                 class_id = det_yolo_class[m[1]]
-                class_score = det_score_pred[m[1]].cpu().numpy()
-                # class_score = det_yolo_score[m[1]].cpu().numpy()
+                # class_score = det_score_pred[m[1]].cpu().numpy()
+                class_score = det_yolo_score[m[1]].cpu().numpy()
             track = {
                 "translation": det_boxes[m[1], :3].cpu().numpy(),
                 "size": det_boxes[m[1], 3:6].cpu().numpy(),
@@ -254,8 +253,8 @@ class Tracker(object):
             base_ids = list(NuScenesClassesBase.values())
             if class_id not in base_ids:
                 class_id = det_yolo_class[i]
-                class_score = det_score_pred[m[1]].cpu().numpy()
-                # class_score = det_yolo_score[i].cpu().numpy()
+                # class_score = det_score_pred[m[1]].cpu().numpy()
+                class_score = det_yolo_score[i].cpu().numpy()
             track = {
                 "translation": det_boxes[i, :3].cpu().numpy(),
                 "size": det_boxes[i, 3:6].cpu().numpy(),
@@ -322,7 +321,6 @@ class Tracker(object):
                             'edge_index': edge_index_track_new,
                             'classes': new_track_class,
                             'yolo_class': new_track_yolo_class,
-                            'embedding': new_track_embedding,
                             'gt_tracking_id': new_track_gt,
                             'age': new_track_age
                             }

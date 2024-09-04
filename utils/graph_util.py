@@ -7,7 +7,6 @@ import torch
 from torch import Tensor
 from copy import deepcopy
 import iou3d_nms_cuda
-import pulp
 
 from torch_geometric.data import Batch
 from torch_geometric.utils.unbatch import unbatch
@@ -152,49 +151,6 @@ def build_inter_graph(det_boxes, track_boxes, det_class, track_class,
         diff_time = age_t[edge_index[0, :]].unsqueeze(1)
         diff_position_pred = boxes_d[edge_index[1, :], :2] - pred_boxes_t[edge_index[0, :], :2]
         # edge_cost = cost[edge_index[0, :], edge_index[1, :]].unsqueeze(1)
-
-        # Initial edge attribute
-        # frame time difference, position difference, size difference
-        # and the differences in the predicted position assuming constant velocity
-        edge_attr = torch.cat([diff_box, diff_position_pred, diff_time], dim=1)
-
-        size_s = boxes_t.size(0)
-        size_t = boxes_d.size(0)
-        
-        data = BipartiteData(size_s=size_s, size_t=size_t,
-                             edge_index=edge_index, edge_attr=edge_attr)
-        data_list.append(data)
-    
-    data_batch = Batch.from_data_list(data_list, follow_batch=['edge_index'])
-
-    return data_batch
-
-def build_thresh_inter_graph(det_boxes, track_boxes, track_velo, track_age, 
-                            det_batch, track_batch, dist_thresh, size_thresh):
-
-    det_boxes_list = unbatch(det_boxes, det_batch)
-
-    track_boxes_list = unbatch(track_boxes, track_batch)
-    track_velo_list = unbatch(track_velo, track_batch)
-
-    track_age_list = unbatch(track_age, track_batch)
-
-    data_list = []
-    for boxes_d, boxes_t, age_t, velo_t in zip(det_boxes_list,
-        track_boxes_list, track_age_list, track_velo_list):
-
-        # Move track boxes forward using their velocity
-        pred_boxes_t = deepcopy(boxes_t)
-        # TODO: update with precise time stamp
-        delta_dist = velo_t.detach() * age_t.unsqueeze(1) * 0.5
-        pred_boxes_t[:, :2] += delta_dist # s1 = s0 + v0 * delta_t
-
-        adj = velocity_adj((pred_boxes_t, boxes_d), dist_thresh, size_thresh)
-        edge_index = adj_to_edge_index(adj)
-
-        diff_box = boxes_d[edge_index[1, :], :] - boxes_t[edge_index[0, :], :]
-        diff_time = age_t[edge_index[0, :]].unsqueeze(1)
-        diff_position_pred = boxes_d[edge_index[1, :], :2] - pred_boxes_t[edge_index[0, :], :2]
 
         # Initial edge attribute
         # frame time difference, position difference, size difference

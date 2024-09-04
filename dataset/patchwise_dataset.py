@@ -124,8 +124,7 @@ class PatchwiseDataset(BaseDataset):
                               det_yolo_class=det_yolo_class,
                               frame_id=torch.tensor(frame_id, dtype=torch.int),
                               next_exist=det_next_exist,
-                              velo_target=velo_target,
-                              pos_target=pos_target
+                              velo_target=velo_target
                               )
             seq_data.append(frame_data)
         
