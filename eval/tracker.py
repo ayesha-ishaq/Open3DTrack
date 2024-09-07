@@ -36,9 +36,8 @@ def update_yolo_class(det_field, track_field, match, new_det, inactive_track):
     new_track_field = torch.cat([field_mat, new_det_field, inactive_track_field], 0)
     return new_track_field
 
-def update_feature(det_feat, track_feat, match, new_det, inactive_track,
+def update_feature(det_feat, track_feat,  match, new_det, inactive_track,
                    weight=0.5):
-    # feat_mat = det_score[match[:, 1]] * det_feat[match[:, 1]] + (1 - det_score[match[:, 1]]) * track_feat[match[:, 0]]
 
     feat_mat = weight * det_feat[match[:, 1]] + (1 - weight) * track_feat[match[:, 0]]
 
@@ -48,17 +47,15 @@ def update_feature(det_feat, track_feat, match, new_det, inactive_track,
     new_track_feat = torch.cat([feat_mat, new_det_feat, inactive_track_feat], 0)
     return new_track_feat
 
-def update_embedding(det_feat, track_feat, det_yolo_class, track_yolo_class,match, new_det, 
-                    inactive_track, weight=0.5):
-    # feat_mat = det_score[match[:, 1]] * det_feat[match[:, 1]] + (1 - det_score[match[:, 1]]) * track_feat[match[:, 0]]
-    det_weight = (det_yolo_class[match[:,1]]!=7).unsqueeze(1)*(weight)
-    feat_mat = det_weight * det_feat[match[:, 1]] + (track_yolo_class[match[:,0]]!=7).unsqueeze(1)*(1 - det_weight) * track_feat[match[:, 0]]
+def calculate_velo(det_box, track_box, det_velo, track_velo, match, new_det, inactive_track):
+    
+    field_mat = (det_box[:, :2][match[:, 1]] - track_box[:, :2][match[:, 0]]) * 2.0
+    
+    new_det_field = det_velo[new_det]
+    inactive_track_field = track_velo[inactive_track]
 
-    new_det_feat = det_feat[new_det]
-    inactive_track_feat = track_feat[inactive_track]
-
-    new_track_feat = torch.cat([feat_mat, new_det_feat, inactive_track_feat], 0)
-    return new_track_feat
+    new_track_field = torch.cat([field_mat, new_det_field, inactive_track_field], 0)
+    return new_track_field
 
 class Tracker(object):
     def __init__(self, max_age=0, 
@@ -90,11 +87,11 @@ class Tracker(object):
         self.track_state = {'features': None,
                             'boxes': None,
                             'velo': None,
+                            'calc_velo': None,
                             'edge_index': None,
                             'classes': None,
                             'yolo_class' : None,
                             'yolo_score' : None,
-                            'embedding' : None,
                             'gt_tracking_id': None,
                             'age': None,
                             }
@@ -109,6 +106,7 @@ class Tracker(object):
         track_feat = data.x
         track_boxes = data.det_box
         track_velo = data.det_velo
+        track_calc_velo = data.det_velo
         edge_index_track = data.edge_index
         track_class = data.det_class
         track_yolo_class = data.det_yolo_class
@@ -120,6 +118,7 @@ class Tracker(object):
         self.track_state = {'features': track_feat,
                             'boxes': track_boxes,
                             'velo': track_velo,
+                            'calc_velo': track_calc_velo,
                             'edge_index': edge_index_track,
                             'classes': track_class,
                             'yolo_class' : track_yolo_class,
@@ -142,7 +141,7 @@ class Tracker(object):
             if class_id not in base_ids:
                 class_id = track_yolo_class[i]
                 class_score = track_yolo_score[i].cpu().numpy()
-                # class_score = (0.1 + 0.8421*(class_score - 0.01))
+                class_score = (0.1 + 0.8421*(class_score - 0.01))
             track = {
                 "translation": track_boxes[i, :3].cpu().numpy(),
                 "size": track_boxes[i, 3:6].cpu().numpy(),
@@ -203,7 +202,7 @@ class Tracker(object):
 
         # update track state
         self._update_track_state(match, unmat_det, inactive_trk, track_latent_feat, det_latent_feat,
-                                 det_boxes, pred_velo, det_class, det_yolo_class, det_gt)
+                                 det_boxes, pred_velo, det_class, det_yolo_class, det_score, det_yolo_score, det_gt)
         
         assert len(self.track_info) == self.track_state['features'].size(0)
 
@@ -230,8 +229,8 @@ class Tracker(object):
             base_ids = list(NuScenesClassesBase.values())
             if class_id not in base_ids:
                 class_id = det_yolo_class[m[1]]
-                # class_score = det_score_pred[m[1]].cpu().numpy()
-                class_score = det_yolo_score[m[1]].cpu().numpy()
+                class_score = det_score_pred[m[1]].cpu().numpy()
+                # class_score = det_yolo_score[m[1]].cpu().numpy()
             track = {
                 "translation": det_boxes[m[1], :3].cpu().numpy(),
                 "size": det_boxes[m[1], 3:6].cpu().numpy(),
@@ -253,8 +252,8 @@ class Tracker(object):
             base_ids = list(NuScenesClassesBase.values())
             if class_id not in base_ids:
                 class_id = det_yolo_class[i]
-                # class_score = det_score_pred[m[1]].cpu().numpy()
-                class_score = det_yolo_score[i].cpu().numpy()
+                class_score = det_score_pred[i].cpu().numpy()
+                # class_score = det_yolo_score[i].cpu().numpy()
             track = {
                 "translation": det_boxes[i, :3].cpu().numpy(),
                 "size": det_boxes[i, 3:6].cpu().numpy(),
@@ -279,7 +278,7 @@ class Tracker(object):
         self.track_info = new_track_info
 
     def _update_track_state(self, matches, new_dets, inactive_tracks, track_latent_feat, det_latent_feat, 
-                            det_boxes, pred_velo, det_class, det_yolo_class, det_gt):
+                            det_boxes, pred_velo, det_class, det_yolo_class, det_score, det_score_pred, det_gt):
         '''
         Update internal information for the network.
         This function is very similar to `Trainer._batch_update_tracks` function.
@@ -293,12 +292,15 @@ class Tracker(object):
         track_gt = self.track_state['gt_tracking_id']
         track_age = self.track_state['age']
 
-        new_track_feat = update_feature(det_latent_feat, track_latent_feat, matches, new_dets,
+        new_track_feat = update_feature(det_latent_feat, track_latent_feat,
+                                      matches, new_dets,
                                       inactive_tracks, weight=self.feature_update_weight)
         new_track_boxes = update_field(det_boxes, track_boxes, matches, new_dets,
                                       inactive_tracks, update_with_dets=True)
         new_track_velo = update_field(pred_velo, track_velo, matches, new_dets,
                                       inactive_tracks, update_with_dets=True)
+        new_calc_track_velo = calculate_velo(det_boxes, track_boxes, pred_velo, track_velo, 
+                                          matches, new_dets, inactive_tracks)
         new_track_class = update_field(det_class, track_class, matches, new_dets,
                                       inactive_tracks, update_with_dets=True)
         new_track_yolo_class = update_yolo_class(det_yolo_class, track_yolo_class, 
@@ -318,6 +320,7 @@ class Tracker(object):
         self.track_state = {'features': new_track_feat,
                             'boxes': new_track_boxes,
                             'velo': new_track_velo,
+                            'calc_velo': new_calc_track_velo,
                             'edge_index': edge_index_track_new,
                             'classes': new_track_class,
                             'yolo_class': new_track_yolo_class,

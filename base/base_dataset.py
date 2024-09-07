@@ -260,8 +260,8 @@ class BaseDataset(Dataset):
                 det_box = frame['dets']['box']
                 gt_box = frame['gts']['box']
 
-                det_cls = frame['dets']['yolo_class']
-                gt_cls = frame['gts']['class']
+                #det_cls = frame['dets']['yolo_class']
+                #gt_cls = frame['gts']['class']
 
                 # Avoid tracking id match across batch elements
                 gt_track_id = frame['gts']['tracking_id'] + scene_id * 1000
@@ -271,8 +271,8 @@ class BaseDataset(Dataset):
                 gt_next_x = get_next_trans[:, 0]
                 gt_next_y = get_next_trans[:, 1]
 
-                matches = self._dets_gt_matching(det_box, det_cls, gt_box, gt_cls)
-                # matches = self._dets_gt_matching_class_agnostic(det_box, gt_box)
+                # matches = self._dets_gt_matching(det_box, det_cls, gt_box, gt_cls)
+                matches = self._dets_gt_matching_class_agnostic(det_box, gt_box)
 
                 num_all_gts += frame['num_gts']
                 num_all_matched_gts += len(matches)

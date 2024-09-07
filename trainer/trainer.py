@@ -20,7 +20,7 @@ from base import BaseTrainer
 from utils import inf_loop, MetricTracker
 from utils import match_util
 import utils.graph_util as graph_util
-from eval.tracker import Tracker, update_field, update_yolo_class, update_feature
+from eval.tracker import Tracker, update_field, update_yolo_class, update_feature, calculate_velo
 from eval.nusc_eval import eval_nusc_tracking
 
 
@@ -77,7 +77,6 @@ class Trainer(BaseTrainer):
                                    batch_det_class, batch_track_class,
                                    batch_det_yolo_class, batch_track_yolo_class,
                                    batch_det_gt, batch_track_gt,
-                                   batch_det_score, batch_track_score,
                                    batch_track_age, det_batch, track_batch
                                    ):
         '''
@@ -110,9 +109,6 @@ class Trainer(BaseTrainer):
         det_gt_list = unbatch(batch_det_gt, det_batch)
         track_gt_list = unbatch(batch_track_gt, track_batch)
 
-        det_score_list = unbatch(batch_det_score, det_batch)
-        track_score_list = unbatch(batch_track_score, track_batch)
-
         track_age_list = unbatch(batch_track_age, track_batch)
 
 
@@ -120,11 +116,11 @@ class Trainer(BaseTrainer):
 
         for (inter_graph, affinity, det_feat, trk_feat, det_boxes, trk_boxes, 
              det_velo, trk_velo, det_class, trk_class, det_yolo_class, trk_yolo_class, 
-             det_gt, trk_gt, det_score, trk_score, trk_age) in zip(inter_graph_list, affinity_list, 
+             det_gt, trk_gt, trk_age) in zip(inter_graph_list, affinity_list, 
              det_feat_list, track_feat_list, det_boxes_list, track_boxes_list, 
              det_velo_list, track_velo_list, det_class_list, track_class_list, 
              det_yolo_class_list, track_yolo_class_list, det_gt_list, track_gt_list,
-             det_score_list, track_score_list,track_age_list):
+             track_age_list):
 
             edge_index_inter = inter_graph.edge_index
             num_tracks = inter_graph.size_s
@@ -156,13 +152,13 @@ class Trainer(BaseTrainer):
                                            inactive_trk, update_with_dets=True)
             new_track_velo = update_field(det_velo, trk_velo, match, unmat_det,
                                           inactive_trk, update_with_dets=True)
+            new_calc_track_velo = calculate_velo(det_boxes, trk_boxes,det_velo, trk_velo, 
+                                          match, unmat_det, inactive_trk)
             new_track_class = update_field(det_class, trk_class, match, unmat_det,
                                            inactive_trk, update_with_dets=True)
             new_track_yolo_class = update_yolo_class(det_yolo_class, trk_yolo_class,
                                            match, unmat_det, inactive_trk)
             new_track_gt = update_field(det_gt, trk_gt, match, unmat_det,
-                                        inactive_trk, update_with_dets=True)
-            new_track_score = update_field(det_score, trk_score, match, unmat_det,
                                         inactive_trk, update_with_dets=True)
 
             det_age = torch.ones(len(match) + len(unmat_det), dtype=torch.int, device=trk_age.device)
@@ -179,10 +175,10 @@ class Trainer(BaseTrainer):
                                   edge_index=new_track_edge_index,
                                   boxes=new_track_boxes,
                                   velo=new_track_velo,
+                                  calc_velo=new_calc_track_velo,
                                   classes=new_track_class,
                                   yolo_class=new_track_yolo_class,
                                   tracking_id=new_track_gt,
-                                  score=new_track_score,
                                   ages=new_track_age)
             data.append(new_track_data)
         
@@ -209,12 +205,12 @@ class Trainer(BaseTrainer):
                 tracks = data.x
                 track_boxes = data.det_box
                 track_velo = data.det_velo
+                track_calc_velo = data.det_velo
                 edge_index_track = data.edge_index
                 track_class = data.det_class
                 track_yolo_class = data.det_yolo_class
                 track_batch = data.x_batch
                 track_gt = data.tracking_id
-                track_score_gt = data.det_score
                 track_age = torch.ones_like(track_class, dtype=torch.int)
                 dist_thresh, size_thresh = (5, 2)
 
@@ -233,23 +229,22 @@ class Trainer(BaseTrainer):
 
                 # Build inter graph between detections and tracks
                 batched_inter_graph = graph_util.build_inter_graph(
-                    det_boxes, track_boxes, det_yolo_class, track_yolo_class,
-                    track_velo, det_velo, track_age, det_batch, track_batch)
+                    det_boxes, track_boxes, track_velo, track_calc_velo,
+                    track_age, det_batch, track_batch)
                 edge_index_inter = batched_inter_graph.edge_index
                 edge_attr_inter = batched_inter_graph.edge_attr
 
                 # Forward pass
-                affinity, track_feat, det_feat, pred_velo = self.model(
+                affinity, track_feat, det_feat, pred_velo, det_score = self.model(
                     dets, tracks, edge_index_det, edge_index_track, edge_index_inter, edge_attr_inter)
 
-                # loss
-                target = self.criterion.generate_target(track_gt, det_gt, edge_index_inter)
-                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask)
-                                    #  det_score_gt, det_score)
-                losses[f'loss/time_stamp_{i+1}'] = loss
+                # batched_inter_graph = graph_util.apply_mask_to_batch(batched_inter_graph, edge_mask)
 
-                # CHANGE DETACH AND USE PREDICTED THRESHOLDS
-                # dist_thresh, size_thresh = threshold.detach().cpu().numpy()
+                # loss
+                target = self.criterion.generate_target(track_gt, det_gt, batched_inter_graph.edge_index)
+                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask,
+                                     det_score_gt, det_score)
+                losses[f'loss/time_stamp_{i+1}'] = loss
 
                 # update tracks
                 if i != (len(data_seq) - 1):
@@ -257,20 +252,20 @@ class Trainer(BaseTrainer):
                     updated_track_data = self._batch_update_tracks(
                         affinity_sigmoid, batched_inter_graph, det_feat, track_feat,
                         det_boxes, track_boxes, pred_velo, track_velo, det_class, track_class,
-                        det_yolo_class, track_yolo_class, det_gt, track_gt, det_score_gt,
-                        track_score_gt, track_age, det_batch, track_batch)
+                        det_yolo_class, track_yolo_class, det_gt, track_gt, track_age,
+                        det_batch, track_batch)
 
                     if updated_track_data is not None:
                         tracks = updated_track_data.x
                         track_boxes = updated_track_data.boxes
                         track_velo = updated_track_data.velo
+                        track_calc_velo = updated_track_data.calc_velo
                         track_class = updated_track_data.classes
                         track_yolo_class = updated_track_data.yolo_class
                         edge_index_track = updated_track_data.edge_index
                         track_batch = updated_track_data.batch
                         track_gt = updated_track_data.tracking_id
                         track_age = updated_track_data.ages
-                        track_score_gt = updated_track_data.score
 
         return losses
      
@@ -363,23 +358,27 @@ class Trainer(BaseTrainer):
 
                 inter_graph = graph_util.build_inter_graph(
                     det_boxes, self.tracker.track_state['boxes'],
-                    det_yolo_class, self.tracker.track_state['yolo_class'],
-                    self.tracker.track_state['velo'], det_velo, self.tracker.track_state['age'],
+                    self.tracker.track_state['velo'], 
+                    self.tracker.track_state['calc_velo'],
+                    self.tracker.track_state['age'],
                     det_batch, track_batch).to_data_list()[0] # Batch size is 1 here
                 edge_index_inter = inter_graph.edge_index
                 edge_attr_inter = inter_graph.edge_attr
 
-                affinity, track_feat, det_feat, pred_velo = self.model(
+                affinity, track_feat, det_feat, pred_velo, det_score = self.model(
                     dets, 
                     self.tracker.track_state['features'],                  
                     edge_index_det, self.tracker.track_state['edge_index'],
                     edge_index_inter, edge_attr_inter)
 
+                # inter_graph.edge_index = inter_graph.edge_index[:, edge_mask]
+                # inter_graph.edge_attr = inter_graph.edge_attr[edge_mask]
+
                 # loss
                 target = self.criterion.generate_target(
-                    self.tracker.track_state['gt_tracking_id'], det_gt, edge_index_inter)
-                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask)
-                                    #   det_score_gt, det_score)
+                    self.tracker.track_state['gt_tracking_id'], det_gt, inter_graph.edge_index)
+                loss = self.criterion(affinity, target, pred_velo, velo_target, velo_mask,
+                                      det_score_gt, det_score)
 
                 self.valid_metrics.update('loss', loss)
 
@@ -389,7 +388,7 @@ class Trainer(BaseTrainer):
                 # track step
                 affinity = torch.sigmoid(affinity[-1])
                 self.tracker.track_step(affinity, pred_velo, inter_graph, data, track_feat, det_feat,
-                                        det_score_gt)
+                                        det_score)
         
             frame_annos = []
             unsorted_track_info = copy.deepcopy(self.tracker.track_info)
