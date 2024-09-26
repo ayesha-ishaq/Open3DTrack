@@ -37,6 +37,47 @@ class BipartiteData(Data):
         else:
             return super().__inc__(key, value, *args, **kwargs)
 
+def category_to_tracking_name_base(split, category_name):
+    """
+    Default label mapping from nuScenes to nuScenes tracking classes.
+    :param category_name: Generic nuScenes class.
+    :return: nuScenes tracking class.
+    """
+    if split == 'diverse':
+        tracking_mapping = {
+            'vehicle.bicycle': 'bicycle',
+            'vehicle.car': 'car',
+            'vehicle.bus.bendy': 'bus',
+            'vehicle.bus.rigid': 'bus',
+            'vehicle.trailer': 'trailer'
+        }
+    
+    elif split == 'urban':
+        tracking_mapping = {
+            'vehicle.car': 'car',
+            'vehicle.motorcycle': 'motorcycle',
+            'vehicle.truck': 'truck',
+            'vehicle.trailer': 'trailer'
+        }
+
+    elif split == 'rare':
+        tracking_mapping = {
+            'vehicle.car': 'car',
+            'human.pedestrian.adult': 'pedestrian',
+            'human.pedestrian.child': 'pedestrian',
+            'human.pedestrian.construction_worker': 'pedestrian',
+            'human.pedestrian.police_officer': 'pedestrian',
+            'vehicle.truck': 'truck',
+            'vehicle.trailer': 'trailer'
+        }
+
+
+    if category_name in tracking_mapping:
+        return tracking_mapping[category_name]
+    else:
+        return None
+
+
 NuScenesClasses = {
     'car' : 0,
     'pedestrian' : 1,
@@ -47,116 +88,24 @@ NuScenesClasses = {
     'trailer' : 6,
 }
 
-#-----------------SPLIT 1-----------------------
-# NuScenesClassesBase = {
-#     'car' : 0,
-#     'pedestrian' : 1,
-#     'bicycle' : 2,
-#     'bus' : 4,
-# }
-
-# def category_to_tracking_name_base(category_name):
-#     """
-#     Default label mapping from nuScenes to nuScenes tracking classes.
-#     :param category_name: Generic nuScenes class.
-#     :return: nuScenes tracking class.
-#     """
-#     tracking_mapping = {
-#         'vehicle.bicycle': 'bicycle',
-#         'vehicle.bus.bendy': 'bus',
-#         'vehicle.bus.rigid': 'bus',
-#         'vehicle.car': 'car',
-#         'human.pedestrian.adult': 'pedestrian',
-#         'human.pedestrian.child': 'pedestrian',
-#         'human.pedestrian.construction_worker': 'pedestrian',
-#         'human.pedestrian.police_officer': 'pedestrian',
-#     }
-
-#     if category_name in tracking_mapping:
-#         return tracking_mapping[category_name]
-#     else:
-#         return None
-
-
-#-----------------SPLIT 2-----------------------
-# NuScenesClassesBase = {
-#     'car' : 0,
-#     'pedestrian' : 1,
-#     'truck' : 3,
-# }
-
-# def category_to_tracking_name_base(category_name):
-#     """
-#     Default label mapping from nuScenes to nuScenes tracking classes.
-#     :param category_name: Generic nuScenes class.
-#     :return: nuScenes tracking class.
-#     """
-#     tracking_mapping = {
-#         'vehicle.car': 'car',
-#         'human.pedestrian.adult': 'pedestrian',
-#         'human.pedestrian.child': 'pedestrian',
-#         'human.pedestrian.construction_worker': 'pedestrian',
-#         'human.pedestrian.police_officer': 'pedestrian',
-#         'vehicle.truck': 'truck'
-#     }
-
-#     if category_name in tracking_mapping:
-#         return tracking_mapping[category_name]
-#     else:
-#         return None
-
-#-----------------SPLIT 3-----------------------
-
 NuScenesClassesBase = {
-    'car' : 0,
-    'truck' : 3,
-    'bus' : 4,
-    'trailer' : 6,
+    'urban':{
+        'car' : 0,
+        'truck' : 3,
+        'motorcycle' : 5,
+        'trailer' : 6,
+    },
+    'diverse':{
+        'car' : 0,
+        'bicycle' : 2,
+        'bus' : 4,
+        'trailer' : 6,
+    },
+    'rare':{
+        'car' : 0,
+        'pedestrian' : 1,
+        'truck' : 3,
+        'trailer' : 6,
+    }
 }
 
-def category_to_tracking_name_base(category_name):
-    """
-    Default label mapping from nuScenes to nuScenes tracking classes.
-    :param category_name: Generic nuScenes class.
-    :return: nuScenes tracking class.
-    """
-    tracking_mapping = {
-        'vehicle.car': 'car',
-        'vehicle.bus.bendy': 'bus',
-        'vehicle.bus.rigid': 'bus',
-        'vehicle.truck': 'truck',
-        'vehicle.trailer': 'trailer'
-    }
-
-    if category_name in tracking_mapping:
-        return tracking_mapping[category_name]
-    else:
-        return None
-
-
-# #-----------------SPLIT 4-----------------------
-
-# NuScenesClassesBase = {
-#     'car' : 0,
-#     'truck' : 3,
-#     'motorcycle' : 5,
-#     'trailer' : 6,
-# }
-
-# def category_to_tracking_name_base(category_name):
-#     """
-#     Default label mapping from nuScenes to nuScenes tracking classes.
-#     :param category_name: Generic nuScenes class.
-#     :return: nuScenes tracking class.
-#     """
-#     tracking_mapping = {
-#         'vehicle.car': 'car',
-#         'vehicle.motorcycle': 'motorcycle',
-#         'vehicle.truck': 'truck',
-#         'vehicle.trailer': 'trailer'
-#     }
-
-#     if category_name in tracking_mapping:
-#         return tracking_mapping[category_name]
-#     else:
-#         return None

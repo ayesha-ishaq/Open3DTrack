@@ -24,7 +24,6 @@ class Sequence(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
-        # self._read_scene(self.scene_id)
         token = self.data[idx]['token']
         detections = self.data[idx]['dets']
         det_matched_track_id = self.data[idx]['det_matched_track_id']
@@ -35,14 +34,13 @@ class Sequence(Dataset):
         det_box = detections['box']
         det_velo = detections['velocity']
         det_category = detections['class']
-        # det_class_one_hot = torch_one_hot(det_category, self.num_classes)
         det_score = detections['score']
         det_yolo_class = detections['yolo_class']
         det_yolo_score = detections['yolo_score']
-        # torch.unsqueeze(detections['yolo_class'], 1)
+        distance_weights = detections['distance_weights']
         det_feat = torch.cat([det_box, det_velo], 1)
+        
         # Build the adjacency matrix of the detection graph
-        # CHANGE: classes with embedding to build graph 
         det_adj = graph_util.bev_euclidean_distance_adj(det_box, None, self.graph_truncation_dist)
         edge_index_det = graph_util.adj_to_edge_index(det_adj)
 
@@ -56,7 +54,8 @@ class Sequence(Dataset):
                           det_yolo_score=det_yolo_score,
                           det_yolo_class=det_yolo_class,
                           next_exist=det_next_exist,
-                          velo_target=velo_target
+                          velo_target=velo_target,
+                          distance_weights=distance_weights,
                           )
         
         return frame_data, token

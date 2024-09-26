@@ -172,116 +172,118 @@ class TrackingEvalWrapper(TrackingEval):
         savepath = self.output_dir / 'vis'
         # self.track_gt: Dict[str, Dict[int, List[TrackingBox]]]:
         for scene_id, scene_token in enumerate(self.tracks_gt.keys()):
-            # if scene_token == "905cfed4f0fc46679e8df8890cca4141" or scene_token == "96e5f1f0944946f391b4ef33ad623008":                 
-            print(f'Visualizing {scene_id}-th sequence.')
-            scene_tracks_gt = self.tracks_gt[scene_token]
-            scene_tracks_pred = self.tracks_pred[scene_token]
+            for i in range(num_vis):
+                print(f'Visualizing {scene_id}-th sequence.')
+                scene_tracks_gt = self.tracks_gt[scene_token]
+                scene_tracks_pred = self.tracks_pred[scene_token]
 
-            savepath_sub = Path(savepath) / scene_token
-            savepath_sub_gt = savepath_sub / "gt"
-            savepath_sub_pred = savepath_sub / "pred"
-            savepath_sub_gt.mkdir(parents=True, exist_ok=True)
-            savepath_sub_pred.mkdir(parents=True, exist_ok=True)
+                savepath_sub = Path(savepath) / scene_token
+                savepath_sub_gt = savepath_sub / "gt"
+                savepath_sub_pred = savepath_sub / "pred"
+                savepath_sub_gt.mkdir(parents=True, exist_ok=True)
+                savepath_sub_pred.mkdir(parents=True, exist_ok=True)
 
-            scene = nusc.get('scene', scene_token)
-            cur_sample_token = scene['first_sample_token']
-            last_token = scene['last_sample_token']
+                scene = nusc.get('scene', scene_token)
+                cur_sample_token = scene['first_sample_token']
+                last_token = scene['last_sample_token']
 
-            frame_id = 0
+                frame_id = 0
 
-            while True:
-                # Retrieve sensor & pose records.
-                cur_sample = nusc.get('sample', cur_sample_token)
-                sd_record = nusc.get('sample_data', cur_sample['data']['LIDAR_TOP'])
-                timestamp = cur_sample['timestamp']
-                cs_record = nusc.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
-                pose_record = nusc.get('ego_pose', sd_record['ego_pose_token'])
-                # cameras = ["CAM_FRONT_LEFT", "CAM_FRONT", "CAM_FRONT_RIGHT","CAM_BACK_LEFT", "CAM_BACK", "CAM_BACK_RIGHT"]
-    
-                # Get boxes.
-                # _, axes = plt.subplots(2, 3, figsize=(48, 27), gridspec_kw={'wspace': 0, 'hspace': 0})
-                frame_gt_global = scene_tracks_gt[timestamp]
-                frame_pred_global = scene_tracks_pred[timestamp]
-                # for i, cam in enumerate(cameras):
-                #     camera = nusc.get('sample_data', cur_sample['data'][cam])
-                #     camera_transform = nusc.get('calibrated_sensor', camera['calibrated_sensor_token'])
-                #     img_path = os.path.join(nusc.dataroot, camera['filename'])
-                #     ego_pose_cam = nusc.get('ego_pose', camera['ego_pose_token'])
-                #     # Load the image
-                #     image = cv2.imread(img_path)
-                #     preds_cam, colors = track_boxes_to_camers(ego_pose_cam, camera_transform, frame_pred_global)
-                #     image = draw_boxes_on_image(preds_cam, image, colors)
-                #     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                #     if i < 3:
-                #         axes[0, i].imshow(image)
-                #         axes[0, i].axis('off')
-                #     else:
-                #         axes[1, i-3].imshow(image)
-                #         axes[1, i-3].axis('off')
+                while True:
+                    # Retrieve sensor & pose records.
+                    cur_sample = nusc.get('sample', cur_sample_token)
+                    sd_record = nusc.get('sample_data', cur_sample['data']['LIDAR_TOP'])
+                    timestamp = cur_sample['timestamp']
+                    cs_record = nusc.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
+                    pose_record = nusc.get('ego_pose', sd_record['ego_pose_token'])
+                    cameras = ["CAM_FRONT_LEFT", "CAM_FRONT", "CAM_FRONT_RIGHT","CAM_BACK_LEFT", "CAM_BACK", "CAM_BACK_RIGHT"]
+        
+                    # Get boxes.
+                    _, axes = plt.subplots(2, 3, figsize=(48, 18), gridspec_kw={'wspace': 0, 'hspace': 0})
+                    frame_gt_global = scene_tracks_gt[timestamp]
+                    frame_pred_global = scene_tracks_pred[timestamp]
+                    for i, cam in enumerate(cameras):
+                        camera = nusc.get('sample_data', cur_sample['data'][cam])
+                        camera_transform = nusc.get('calibrated_sensor', camera['calibrated_sensor_token'])
+                        img_path = os.path.join(nusc.dataroot, camera['filename'])
+                        ego_pose_cam = nusc.get('ego_pose', camera['ego_pose_token'])
+                        # Load the image
+                        image = cv2.imread(img_path)
+                        preds_cam, colors = track_boxes_to_camers(ego_pose_cam, camera_transform, frame_pred_global)
+                        image = draw_boxes_on_image(preds_cam, image, colors)
+                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                        if i < 3:
+                            axes[0, i].imshow(image)
+                            axes[0, i].axis('off')
+                        else:
+                            axes[1, i-3].imshow(image)
+                            axes[1, i-3].axis('off')
 
-                # Map GT boxes to lidar.
-                frame_gt = track_boxes_to_sensor(frame_gt_global, pose_record, cs_record)
+                    plt.savefig(savepath_sub_pred / f'{frame_id:03d}_cam.png', bbox_inches='tight')
+                    plt.close()    
 
-                # Map EST boxes to lidar.
-                frame_pred = track_boxes_to_sensor(frame_pred_global, pose_record, cs_record)
-                
-                # Get point cloud in lidar frame.
-                pc, _ = LidarPointCloud.from_file_multisweep(nusc, cur_sample, 'LIDAR_TOP', 'LIDAR_TOP', nsweeps=nsweeps)
-                
-                
-                # Show point cloud.
-                points = view_points(pc.points[:3, :], np.eye(4), normalize=False)
-                dists = np.sqrt(np.sum(pc.points[:2, :] ** 2, axis=0))
-                colors = np.minimum(1, dists / eval_range)
-                axes_limit = eval_range + 3  # Slightly bigger to include boxes that extend beyond the range.
-                
-                _, (ax_gt) = plt.subplots(1, 1, figsize=(30, 30))
-                ax_gt.set_title('Ground Truth')
-                ax_gt.title.set_size(16)
-                ax_gt.scatter(points[0, :], points[1, :], c=colors, s=0.2)
-                ax_gt.plot(0, 0, 'x', color='black')
+                    # Map GT boxes to lidar.
+                    frame_gt = track_boxes_to_sensor(frame_gt_global, pose_record, cs_record)
 
-                # Show GT boxes.
-                for box in frame_gt:
-                    color = (float(hash(box.token + 'r') % 256) / 255,
-                             float(hash(box.token + 'g') % 256) / 255,
-                             float(hash(box.token + 'b') % 256) / 255)
-                    box.render_box_and_velo(ax_gt, view=np.eye(4), colors=(color, color, color), linewidth=3)
+                    # Map EST boxes to lidar.
+                    frame_pred = track_boxes_to_sensor(frame_pred_global, pose_record, cs_record)
+                    
+                    # Get point cloud in lidar frame.
+                    pc, _ = LidarPointCloud.from_file_multisweep(nusc, cur_sample, 'LIDAR_TOP', 'LIDAR_TOP', nsweeps=nsweeps)
+                    
+                    # Show point cloud.
+                    points = view_points(pc.points[:3, :], np.eye(4), normalize=False)
+                    dists = np.sqrt(np.sum(pc.points[:2, :] ** 2, axis=0))
+                    colors = np.minimum(1, dists / eval_range)
+                    axes_limit = eval_range + 3  # Slightly bigger to include boxes that extend beyond the range.
+                    
+                    _, (ax_gt) = plt.subplots(1, 1, figsize=(30, 30))
+                    ax_gt.set_title('Ground Truth')
+                    ax_gt.title.set_size(16)
+                    ax_gt.scatter(points[0, :], points[1, :], c=colors, s=0.2)
+                    ax_gt.plot(0, 0, 'x', color='black')
 
-                ax_gt.set_xlim(-axes_limit, axes_limit)
-                ax_gt.set_ylim(-axes_limit, axes_limit)
-                plt.savefig(savepath_sub_gt / f'{frame_id:03d}.png', bbox_inches='tight')
-                plt.close()
+                    # Show GT boxes.
+                    for box in frame_gt:
+                        color = (float(hash(box.token + 'r') % 256) / 255,
+                                float(hash(box.token + 'g') % 256) / 255,
+                                float(hash(box.token + 'b') % 256) / 255)
+                        box.render_box_and_velo(ax_gt, view=np.eye(4), colors=(color, color, color), linewidth=3)
 
-                _, (ax_pred) = plt.subplots(1, 1, figsize=(30, 30))
-                ax_pred.set_title('Prediction')
-                ax_pred.title.set_size(16)
-                ax_pred.scatter(points[0, :], points[1, :], c=colors, s=0.2)
-                # Show ego vehicle.
-                ax_pred.plot(0, 0, 'x', color='black')
+                    ax_gt.set_xlim(-axes_limit, axes_limit)
+                    ax_gt.set_ylim(-axes_limit, axes_limit)
+
+                    plt.savefig(savepath_sub_gt / f'{frame_id:03d}.png', bbox_inches='tight')
+                    plt.close()
+
+                    _, (ax_pred) = plt.subplots(1, 1, figsize=(30, 30))
+                    ax_pred.set_title('Prediction')
+                    ax_pred.title.set_size(16)
+                    ax_pred.scatter(points[0, :], points[1, :], c=colors, s=0.2)
+                    # Show ego vehicle.
+                    ax_pred.plot(0, 0, 'x', color='black')
 
 
-                # Show EST boxes.
-                for box in frame_pred:
-                    color = (float(hash(box.token + 'r') % 256) / 255,
-                             float(hash(box.token + 'g') % 256) / 255,
-                             float(hash(box.token + 'b') % 256) / 255)
-                    if box.score > score_threshold:
-                        box.render_box_and_velo(ax_pred, view=np.eye(4), colors=(color, color, color), linewidth=3)
+                    # Show EST boxes.
+                    for box in frame_pred:
+                        color = (float(hash(box.token + 'r') % 256) / 255,
+                                float(hash(box.token + 'g') % 256) / 255,
+                                float(hash(box.token + 'b') % 256) / 255)
+                        if box.score > score_threshold:
+                            box.render_box_and_velo(ax_pred, view=np.eye(4), colors=(color, color, color), linewidth=3)
 
-                # Limit visible range.
-                ax_pred.set_xlim(-axes_limit, axes_limit)
-                ax_pred.set_ylim(-axes_limit, axes_limit)
-                
+                    # Limit visible range.
+                    ax_pred.set_xlim(-axes_limit, axes_limit)
+                    ax_pred.set_ylim(-axes_limit, axes_limit)
+                    
+                    plt.savefig(savepath_sub_pred / f'{frame_id:03d}.png', bbox_inches='tight')
+                    plt.close()
 
-                plt.savefig(savepath_sub_pred / f'{frame_id:03d}.png', bbox_inches='tight')
-                plt.close()
-
-                if cur_sample_token == last_token:
-                    break
-                
-                cur_sample_token = cur_sample['next']
-                frame_id += 1
+                    if cur_sample_token == last_token:
+                        break
+                    
+                    cur_sample_token = cur_sample['next']
+                    frame_id += 1
 
 
 def eval_nusc_tracking(res_path, eval_set="val", output_dir=None, root_path=None, verbose=True,
@@ -307,39 +309,13 @@ def eval_nusc_tracking(res_path, eval_set="val", output_dir=None, root_path=None
         return metrics_summary
 
 
-#json_output = "/home/ayesha.ishaq/Desktop/3DMOTFormer/open_eval/tracking_result_epoch_1.json"
-#val_outputs = "/home/ayesha.ishaq/Desktop/3DMOTFormer/open_eval"
-#nusc_path = "/l/users/ayesha.ishaq/nuScenes/"
-#metrics_summary = eval_nusc_tracking(json_output, 'custom_val', Path(val_outputs), nusc_path,
-#                                        verbose=True,
-#                                        num_vis=0, vis_only=False)
 
 if __name__=="__main__":
 
-    json_output = "/home/ayesha.ishaq/Desktop/3DMOTFormer/open_eval/tracking_result_epoch_ex10.json"
-    val_outputs = "/home/ayesha.ishaq/Desktop/3DMOTFormer/open_eval_10"
-    nusc_path = "/l/users/ayesha.ishaq/nuScenes/"
+    json_output = "./open_eval/tracking_result_epoch_1.json"
+    val_outputs = "./open_eval"
+    nusc_path = "./data/nuScenes/"
 
-    metrics_summary = eval_nusc_tracking(json_output, 'custom', Path(val_outputs), nusc_path,
+    metrics_summary = eval_nusc_tracking(json_output, 'val' , Path(val_outputs), nusc_path,
                                        verbose=True,
                                        num_vis=0, vis_only=False)
-
-    # param_list = [
-    #     ((json_output + "ex1.json"), "custom", (val_outputs+"_1"), nusc_path),
-    #     ((json_output + "ex2.json"), "custom", (val_outputs+"_2"), nusc_path),
-    #     ((json_output + "ex3.json"), "custom", (val_outputs+"_3"), nusc_path),
-    #     ((json_output + "ex4.json"), "custom", (val_outputs+"_4"), nusc_path)
-    # ]
-
-    # # Create a pool of worker processes
-    # pool = mp.Pool(processes=4)
-
-    # # Use starmap to pass multiple arguments to the function in parallel
-    # results = pool.starmap(eval_nusc_tracking, param_list)
-
-    # # Close the pool and wait for the work to finish
-    # pool.close()
-    # pool.join()
-
-    # # Print the results
-    # print(results)

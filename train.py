@@ -30,7 +30,7 @@ def main(config, args):
     logger = config.get_logger('train')
 
     # build model architecture, then print to console
-    model = config.init_obj('arch', module_arch, num_classes=7)
+    model = config.init_obj('arch', module_arch)
     logger.info(model)
 
     # prepare for (multi-device) GPU training
@@ -47,9 +47,8 @@ def main(config, args):
     optimizer = config.init_obj('optimizer', torch.optim, trainable_params)
     # lr_scheduler = config.init_obj('lr_scheduler', torch.optim.lr_scheduler, optimizer)
 
-    
-
     if args.eval_only:
+        
         val_dataset = config.init_obj('val_dataset', module_dataset,
                                   graph_truncation_dist=config['graph_truncation_dist'])
 
@@ -62,10 +61,10 @@ def main(config, args):
                       data_loader=[],
                       len_epoch=config['trainer']['len_epoch'] if 'len_epoch' in config['trainer'].keys() else None,
                       valid_dataset=val_dataset,
-                      eval_interval=config['trainer']['eval_interval'],
                       active_track_thresh=config['trainer']['active_track_thresh'],
                       lr_scheduler=None)
         trainer.val(args.eval_output)
+
     else:
             # setup data_loader instances
         train_dataset = config.init_obj('train_dataset', module_dataset,
@@ -81,7 +80,6 @@ def main(config, args):
                       data_loader=train_dataloader,
                       len_epoch=config['trainer']['len_epoch'] if 'len_epoch' in config['trainer'].keys() else None,
                       valid_dataset=None,
-                      eval_interval=config['trainer']['eval_interval'],
                       active_track_thresh=config['trainer']['active_track_thresh'],
                       lr_scheduler=None)
         trainer.train()

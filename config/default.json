@@ -2,6 +2,7 @@
     "name": "default",
     "n_gpu": 1,
 
+    "split": "diverse", 
     "graph_truncation_dist": 5.0,
 
 
@@ -14,15 +15,13 @@
             "encoder_nlayers": 1,
             "decoder_nlayers": 3,
             "norm_first": true,
-            "cross_attn_value_gate": false,
-            "in_channel": 771,
-            "out_channel": 768
+            "cross_attn_value_gate": false
         }
     },  
     "train_dataset": {
         "type": "PatchwiseDataset",
         "args": {
-            "data_dir": "/l/users/ayesha.ishaq/3dmotformer/output_pkl_split_PBB",
+            "data_dir": "./data/output_pkl_split_PTM",
             "split": "training",
             "sample_length": 6,
             "dataset": "nuscenes",
@@ -43,7 +42,7 @@
     "val_dataset": {
         "type": "SequentialDataset",
         "args": {
-            "data_dir": "/l/users/ayesha.ishaq/3dmotformer/output_pkl_split_PBB",
+            "data_dir": "./data/output_pkl_split_PTM",
             "split": "validation",
             "dataset": "nuscenes",
             "iou_matching": true,
@@ -67,18 +66,16 @@
     "trainer": {
         "epochs": 12,
         "save_dir": "./workspace/",
-        "nusc_path": "/l/users/ayesha.ishaq/nuScenes",
+        "nusc_path": "./data/nuScenes",
         "save_period": 1,
         "verbosity": 2,
         "log_step": 50,
-        "eval_interval": 13,
 
         "active_track_thresh": 0.01,
         "inter_graph_distance_thresh": 5.0,
         "max_age": 3,
         "learned_feature_update": false,
         "feature_update_weight": 1,
-        "embedding_update_weight": 0.5,
         "hungarian_matching": false,
 
         "tensorboard": true,

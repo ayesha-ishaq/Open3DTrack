@@ -71,7 +71,6 @@ class PatchwiseDataset(BaseDataset):
         frame_id = self.meta[idx]['frame_id']
 
         seq_data = []
-        # self._read_scene(seq_id)
 
         # Store data of the following self.sample_length frames into a training mini-sequence
         for i in range(self.sample_length): 
@@ -83,33 +82,15 @@ class PatchwiseDataset(BaseDataset):
 
             det_box = detections['box']
             det_velo = detections['velocity']
-            det_category = detections['class']
-            # det_class_one_hot = torch_one_hot(det_category, self.num_classes)
             det_score = detections['score']
             det_yolo_class = detections['yolo_class']
             det_yolo_score = detections['yolo_score']
-
-            if self.augmentations:
-                if torch.rand(1).item() < 0.4:
-                    num_detections = det_yolo_class.size(0)
-                    if num_detections > 0:
-                        # Randomly select a small number of detections (e.g., 1-3 detections)
-                        num_to_change = torch.randint(low=1, high=min(5, num_detections + 1), size=(1,)).item()
-                        indices_to_change = torch.randperm(num_detections)[:num_to_change]
-                        det_yolo_class[indices_to_change] = 7
-
-                        num_to_change = torch.randint(low=1, high=min(5, num_detections + 1), size=(1,)).item()
-                        indices_to_change = torch.randperm(num_detections)[:num_to_change]
-                        # Add Gaussian noise to the bounding boxes
-                        noise_std = 0.01  # Standard deviation for the Gaussian noise
-                        det_box[indices_to_change] += torch.normal(mean=0, std=noise_std, size=det_box[indices_to_change].shape)
 
             if det_velo.numel() == 0:
                 det_feat = torch.empty(0,9)
             else:
                 det_feat = torch.cat([det_box, det_velo], 1)
             # Build the adjacency matrix of the detection graph
-            # CHANGE: classes with embedding to build graph 
             det_adj = graph_util.bev_euclidean_distance_adj(det_box, None, self.graph_truncation_dist)
             edge_index_det = graph_util.adj_to_edge_index(det_adj)
 
@@ -118,7 +99,6 @@ class PatchwiseDataset(BaseDataset):
                               tracking_id=det_matched_track_id,
                               det_box=det_box,
                               det_velo=det_velo,
-                              det_class=det_category,
                               det_score=det_score,
                               det_yolo_score=det_yolo_score,
                               det_yolo_class=det_yolo_class,

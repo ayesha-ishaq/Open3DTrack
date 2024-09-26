@@ -22,10 +22,6 @@ from nuscenes.eval.detection.data_classes import DetectionBox
 from nuscenes.eval.common.utils import quaternion_yaw
 from nuscenes.eval.tracking.utils import category_to_tracking_name
 
-import torch
-
-from utils.util import load_clip, extract_clip_feature
-
 from utils.data_util import NuScenesClasses, NuScenesClassesBase, category_to_tracking_name_base
 
 
@@ -138,6 +134,27 @@ def compute_distance(box1, box2):
     distance = math.sqrt((center1[0] - center2[0]) ** 2 + (center1[1] - center2[1]) ** 2)
     return distance
 
+def calculate_weight(det_box, image_height=900):
+    # Calculate base depth estimate (inverse of size)
+    box_width = det_box[2] - det_box[0]
+    box_height = det_box[3] - det_box[1]
+    box_size = (box_width * box_height)/ (1600 * 900)
+    base_depth_estimate = 1 / box_size if box_size > 0 else float('inf')
+    
+    y_center =  compute_center(det_box)[1]
+    # Apply perspective correction
+    perspective_factor = 1 - 0.2*(y_center / image_height)
+    adjusted_depth = base_depth_estimate * perspective_factor
+    
+    # Optionally adjust for aspect ratio if needed
+    aspect_ratio = box_width / box_height
+    if aspect_ratio > 2.5:  # e.g., large aspect ratio may indicate a distant large object
+        adjusted_depth = adjusted_depth * (1 / aspect_ratio)
+    
+    # Calculate weight (larger weight for closer objects)
+    weight = adjusted_depth if adjusted_depth > 0 else float('inf')
+    return weight
+
 def find_max_iou_or_closest(projected_box, detection_boxes):
     """
     Compute the IoU between the projected box and all detection boxes, and find the one with the maximum IoU.
@@ -152,11 +169,12 @@ def find_max_iou_or_closest(projected_box, detection_boxes):
     best_value: The maximum IoU value or the minimum distance if no overlap.
     """
     if not detection_boxes:  # If there are no detection boxes
-        return None, None
+        return None, None, None
 
     max_iou = 0
     best_box_class = None
     score = None
+    dist_weight = None
 
     low_iou_boxes = []
     for i, det_box in enumerate(detection_boxes):
@@ -164,32 +182,34 @@ def find_max_iou_or_closest(projected_box, detection_boxes):
             iou = compute_iou(projected_box, det_box[:4])
             if iou > max_iou:
                 max_iou = iou
+                dist_weight = calculate_weight(det_box[:4])
                 best_box_class = det_box[-1]
                 score = det_box[-2]
         else:
             low_iou_boxes.append(i)
 
     if max_iou > 0:
-        return best_box_class, score
+        return best_box_class, score, dist_weight
 
     else:
         for index in low_iou_boxes:
             iou = compute_iou(projected_box, detection_boxes[i][:4])
             if iou > max_iou:
                 max_iou = iou
+                dist_weight = calculate_weight(det_box[:4])
                 best_box_class = detection_boxes[i][-1]
                 score = detection_boxes[i][-2]
     
-    return best_box_class, score
+    return best_box_class, score, dist_weight
 
 
-def base_class_2d(dets):
+def base_class_2d(dets, scenario='rare'):
     for scene in dets:
         for frame in dets[scene]:
             for cam in dets[scene][frame]:
                 base_dets = []
                 for det in dets[scene][frame][cam]:
-                    if det[-1] in NuScenesClassesBase.values():
+                    if det[-1] in NuScenesClassesBase[scenario].values():
                         base_dets.append(det)
                 dets[scene][frame][cam] = base_dets
     return dets
@@ -217,14 +237,10 @@ def write_data_per_scene(scene, output):
         with open(filename, 'wb') as f:
             pickle.dump(content, f)
 
-def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, split, yoloworld_path, apply_nms=False):
+def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, split, yoloworld_path, scenario='rare', apply_nms=False):
 
     print('Generating detection and ground truth sequences...')
     result = []
-    # clip = load_clip()
-    # labelset = list(NuScenesClasses.keys())
-    # text_features = extract_clip_feature(labelset, clip).detach().cpu().numpy()
-    # text_features = np.vstack((text_features, np.zeros((1, 768))))
 
     cameras = ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"]
 
@@ -232,14 +248,13 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
         dets = json.load(f)
 
     if split == 'training':
-        dets = base_class_2d(dets)
+        dets = base_class_2d(dets, scenario)
 
     for scene_id, scene_name in enumerate(tqdm(scenes)):
-        if scene_id >= 0:
+        if scene_id >=0:
             scene = sequences_by_name[scene_name]
             first_token = scene['first_sample_token']
             last_token = scene['last_sample_token']
-            scene_desc = scene['description']
             current_token = first_token
             scene_result = []
             tracking_id_set = set()
@@ -267,7 +282,7 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
                 for det in frame_dets:
                     det_dict = det.serialize()
                     if split == 'training':
-                        if det_dict['detection_name'] in NuScenesClassesBase.keys():
+                        if det_dict['detection_name'] in NuScenesClassesBase[scenario].keys():
                             det_trans.append(det_dict['translation'])
                             det_size.append(det_dict['size'])
                             det_yaw.append([quaternion_yaw(Quaternion(det_dict['rotation']))])
@@ -299,10 +314,10 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
                     frame_dets_dict = simpletrack_nms(frame_dets_dict, iou_threshold=0.1)
                     
                 # get 2D bounding box for nms detections only
-                # embedding = np.zeros((len(frame_dets_dict['translation']), 768))
+
                 yolo_class = np.zeros(len(frame_dets_dict['translation']))
                 yolo_score = np.zeros(len(frame_dets_dict['translation']))
-                frame_det_pts_features = []
+                distance_weights = np.zeros(len(frame_dets_dict['translation']))
             
                 for nms_dets_index in range(len(frame_dets_dict['translation'])):
                     proj_flag = False
@@ -336,21 +351,22 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
                         if final_coords is None:
                             continue
                         else:
-                            class_name, class_score = find_max_iou_or_closest(final_coords, dets[scene_name][current_token][cam])
+                            class_name, class_score, dist_weight = find_max_iou_or_closest(final_coords, dets[scene_name][current_token][cam])
                             proj_flag = True
                             break
                 
                     if not proj_flag or class_name==None:
                         class_name = 7
                         class_score = 0.01
+                        dist_weight = 0.0
             
-                    # embedding[nms_dets_index] = text_features[int(class_name)]
                     yolo_class[nms_dets_index] = int(class_name)
                     yolo_score[nms_dets_index] = class_score
-                
-                # frame_dets_dict['embedding'] = embedding.astype(np.float32) # [N, 768]
+                    distance_weights[nms_dets_index] = dist_weight
+
                 frame_dets_dict['yolo_class'] = yolo_class.astype(np.int32) # [N]
                 frame_dets_dict['yolo_score'] = yolo_score.astype(np.float32) # [N]
+                frame_dets_dict['distance_weights'] = distance_weights.astype(np.float32) # [N]
                 
                 ## Process and concat ground truths for every frame
                 frame_ann_tokens = current_sample['anns']
@@ -369,7 +385,7 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
                 for ann_token in frame_ann_tokens:
                     ann = nusc.get('sample_annotation', ann_token)
                     if split == 'training':
-                        tracking_name = category_to_tracking_name_base(ann['category_name'])
+                        tracking_name = category_to_tracking_name_base(scenario, ann['category_name'])
                     else:
                         tracking_name = category_to_tracking_name(ann['category_name'])
                     if tracking_name is not None:
@@ -450,7 +466,7 @@ def generate_nusc_seq_data(nusc, det_boxes, scenes, sequences_by_name, output, s
     
     return result
 
-def generate_nusc_data(version, dataset_dir, detection_dir, output_dir, yoloworld, apply_nms=False):
+def generate_nusc_data(version, dataset_dir, detection_dir, output_dir, yoloworld, scenario='rare', apply_nms=False):
 
     dataset_dir = dataset_dir 
     train_result_file = detection_dir / "train.json"
@@ -461,9 +477,7 @@ def generate_nusc_data(version, dataset_dir, detection_dir, output_dir, yoloworl
     if version == "v1.0":
         version_fullname += '-trainval'
     nusc = NuScenes(version=version_fullname, dataroot=dataset_dir, verbose=True)
-    # nusc_test = NuScenes(version='v1.0-test', dataroot=dataset_dir, verbose=True)
     sequences_by_name = {scene["name"]: scene for scene in nusc.scene}
-    # sequences_by_name.update({scene["name"]: scene for scene in nusc_test.scene})
     splits_to_scene_names = create_splits_scenes()
 
     train_split = 'train' if version == "v1.0" else 'mini_train'
@@ -471,7 +485,6 @@ def generate_nusc_data(version, dataset_dir, detection_dir, output_dir, yoloworl
     test_split = 'test'
     train_scenes = splits_to_scene_names[train_split]
     val_scenes = splits_to_scene_names[val_split]
-    test_scenes = splits_to_scene_names[test_split]
 
     result_files = [train_result_file, val_result_file]
     scenes = [train_scenes, val_scenes]
@@ -482,23 +495,14 @@ def generate_nusc_data(version, dataset_dir, detection_dir, output_dir, yoloworl
 
     # Train and validation split
     for result_file, scene, output, split, yolo_det in zip(result_files, scenes, output_dirs, splits, yoloworld_dirs):
-        # output.mkdir(parents=True, exist_ok=True)
+        output.mkdir(parents=True, exist_ok=True)
         print('Loading Nusences 3d detctions...')
         det_boxes, _ = load_prediction(result_file, 10000, DetectionBox, verbose=True)
         print('======')
 
-        data = generate_nusc_seq_data(nusc, det_boxes, scene, sequences_by_name, output, split, yolo_det, apply_nms)
+        data = generate_nusc_seq_data(nusc, det_boxes, scene, sequences_by_name, output, split, yolo_det, scenario, apply_nms)
 
-        # write_data(data, output)
     
-    # Test split
-    # print('Loading Nusences 3d detctions...')
-    # det_boxes, _ = load_prediction(test_result_file, 10000, DetectionBox, verbose=True)
-    # print('======')
-
-    # data = generate_nusc_seq_data(nusc_test, det_boxes, test_scenes, sequences_by_name, apply_nms)
-
-    # write_data(data, output_dir / 'testing')
 
 
 if __name__ == '__main__':
@@ -508,11 +512,13 @@ if __name__ == '__main__':
     args.add_argument('--version', default="v1.0", type=str,
                       help='Version of nuScenes dataset')
     args.add_argument('--detection_dir', default=None, type=str,
-                      help='Directory where detection results are stored')
+                      help='Directory where detection results from 3D detector are stored')
     args.add_argument('--output_dir', default=None, type=str,
                       help='Directory where preprocessed pickle files will be stored')
     args.add_argument('--yoloworld_dir', default=None, type=str,
-                      help='Directory where yoloworld results are stored')
+                      help='Directory where yoloworld detection results on images are stored')
+    args.add_argument('--data_split_scenario', default="rare", type=str,
+                        help='Data split scenario: diverse, urban, rare')
     args.add_argument('--apply_nms', action='store_true',
                       help='Whether to apply a Non-Maximum Suppression')
     args = args.parse_args()
@@ -522,4 +528,5 @@ if __name__ == '__main__':
                        detection_dir=Path(args.detection_dir),
                        output_dir=Path(args.output_dir),
                        yoloworld=Path(args.yoloworld_dir),
+                       scenario=args.data_split_scenario,
                        apply_nms=args.apply_nms)

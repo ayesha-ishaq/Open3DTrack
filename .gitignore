@@ -101,7 +101,7 @@ ENV/
 # mypy
 .mypy_cache/
 
-# input data, saved log, checkpoints
+# input data, saved log, checkpoints other folders
 data/
 det/
 eval/det_eval.py
@@ -115,20 +115,16 @@ error.*
 input/
 saved/
 datasets/
-test_eval/
-lang_eval/
-open_eval/
+open_eval*/
 *.mp4
 output_pkl_files/
 val_eval/
-lang_eval_*/
 .azureml/
 detections/
 nuscenes-devkit/
 workspace/
-workspace_original/
-openseg_exported_clip/
-openseg_exported_clip.zip
+bev_detections/
+megvii_detections/
 
 # editor, os cache directory
 .vscode/

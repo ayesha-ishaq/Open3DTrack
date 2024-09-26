@@ -3,7 +3,7 @@
 ## Installation
 First, clone this repository and the git submodules:
 ```
-git clone --recurse-submodules https://github.com/ayesha-ishaq/3DLangTracker.git
+git clone --recurse-submodules https://github.com/ayesha-ishaq/Open3DTrack
 ```
 
 ### Conda environment

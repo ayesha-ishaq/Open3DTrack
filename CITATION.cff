@@ -1,9 +1,10 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 authors:
-  - family-names: Ding
-    given-names: Shuxiao
-    orcid: https://orcid.org/0000-0002-4040-5585
-title: "3DMOTFormer: Graph Transformer for Online 3D Multi-Object Tracking"
-date-released: 2023-08-01
+  - family-names: Ishaq
+    given-names: Ayesha
+    orcid: https://orcid.org/0009-0004-9167-8622
+title: "Open3DTrack: Towards Open-Vocabulary 3D Multi-Object Tracking"
+date-released: 2024-09-30
 url: "https://github.com/dsx0511/3DMOTFormer"
+affiliation: "Mohamed Bin Zayed University of Artificial Intelligence"

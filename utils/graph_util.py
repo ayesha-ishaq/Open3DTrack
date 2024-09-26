@@ -17,13 +17,12 @@ from utils.data_util import BipartiteData, NuScenesClassesBase
 def adj_to_edge_index(adj):
     return torch.nonzero(adj).transpose(1, 0).long()
 
-def class_velocity_adj(boxes, time_diff=0.5):
+def _velocity_adj(boxes, time_diff=0.5):
 
     center_dist = torch.cdist(boxes[0][:, :2], boxes[1][:, :2], p=2.0)
-    distance_thresh = 10
+    distance_thresh = 3
 
-    adj = torch.le(center_dist, distance_thresh).int() 
- 
+    adj = torch.le(center_dist, distance_thresh).int()
     return adj
 
 
@@ -33,7 +32,7 @@ def velocity_adj(boxes, velo, time_diff=0.5):
     detection_boxes = boxes[1]
 
     center_dist = torch.cdist(track_boxes[:, :2], detection_boxes[:, :2], p=2.0)
-    velo_thresh = torch.norm(velo[0].detach() - velo[1], p=2, dim=1)*(3/15) + 3
+    velo_thresh = torch.norm(velo[0].detach() - velo[1], p=2, dim=1)*(0.1) + 3
     adj = torch.le(center_dist, velo_thresh.unsqueeze(1)).int()
     
     return adj
@@ -70,7 +69,7 @@ def fully_connected_adj(size_a, size_b):
 
 
 def build_inter_graph(det_boxes, track_boxes, track_velo, track_calc_velo,
-                      track_age, det_batch, track_batch,
+                      track_age, det_batch, track_batch
                       ):
 
     det_boxes_list = unbatch(det_boxes, det_batch)
@@ -93,13 +92,12 @@ def build_inter_graph(det_boxes, track_boxes, track_velo, track_calc_velo,
         pred_boxes_t[:, :2] += velo_t.detach() * age_t.unsqueeze(1) * 0.5 # s1 = s0 + v0 * delta_t
 
         # adj = velocity_adj((pred_boxes_t, boxes_d), (velo_t, velo_c_t))
-        adj = class_velocity_adj((pred_boxes_t, boxes_d))
+        adj = _velocity_adj((pred_boxes_t, boxes_d))
         edge_index = adj_to_edge_index(adj)
 
         diff_box = boxes_d[edge_index[1, :], :] - boxes_t[edge_index[0, :], :]
         diff_time = age_t[edge_index[0, :]].unsqueeze(1)
         diff_position_pred = boxes_d[edge_index[1, :], :2] - pred_boxes_t[edge_index[0, :], :2]
-        # edge_cost = cost[edge_index[0, :], edge_index[1, :]].unsqueeze(1)
 
         # Initial edge attribute
         # frame time difference, position difference, size difference
@@ -113,28 +111,6 @@ def build_inter_graph(det_boxes, track_boxes, track_velo, track_calc_velo,
                              edge_index=edge_index, edge_attr=edge_attr)
         data_list.append(data)
     
-    data_batch = Batch.from_data_list(data_list, follow_batch=['edge_index'])
-
-    return data_batch
-
-def apply_mask_to_batch(batch_inter_graph, edge_mask):
-        
-    inter_graph_list = batch_inter_graph.to_data_list()
-    edge_index_inter_batch = batch_inter_graph.edge_index_batch
-    edge_mask_list = unbatch(edge_mask, edge_index_inter_batch)
-    data_list = []
-
-    for inter_graph, edge_mask in zip(inter_graph_list, edge_mask_list):
-
-        edge_index = inter_graph.edge_index[:, edge_mask]
-        edge_attr = inter_graph.edge_attr[edge_mask]
-        size_s = inter_graph.size_s
-        size_t = inter_graph.size_t
-        
-        data = BipartiteData(size_s=size_s, size_t=size_t,
-                            edge_index=edge_index, edge_attr=edge_attr)
-        data_list.append(data)
-
     data_batch = Batch.from_data_list(data_list, follow_batch=['edge_index'])
 
     return data_batch

@@ -59,7 +59,6 @@ class BaseDataset(Dataset):
             for frame_file in frame_files:
                 with open(frame_file, 'rb') as f:
                     frame_data = pickle.load(f)
-                    # frame_data = self._drop_background(frame_data)
                     frame_data = self._to_torch_tensor(frame_data)
                     frame_data = self._build_bounding_box(frame_data)
                     if self.score_threshold > 0.0:
@@ -80,24 +79,6 @@ class BaseDataset(Dataset):
     def __getitem__(self, idx):
         raise NotImplementedError
 
-    def _read_scene(self, scene_id):
-        scene_dir = self.data_dir / f'{scene_id:04d}'
-        frame_files = sorted(glob.glob(str(scene_dir) + '/*.pkl'))
-        self.data = []
-        print("Scene: ", scene_id)
-        for frame_file in frame_files:
-            with open(frame_file, 'rb') as f:
-                frame_data = pickle.load(f)
-                frame_data = self._to_torch_tensor(frame_data)
-                frame_data = self._build_bounding_box(frame_data)
-                if self.score_threshold > 0.0:
-                    frame_data = self._score_filter(frame_data, threshold=self.score_threshold)
-                frame_data['scene_id'] = scene_id
-                                        
-            self.data.append(frame_data)
-        self._assign_track_id()
-
-
     def _score_filter(self, data, threshold=0.1):
         '''
         Filter detection boxes according to their scores.
@@ -110,18 +91,6 @@ class BaseDataset(Dataset):
             det_data_filtered[field_name] = filtered_field
         data['dets'] = det_data_filtered
         return data
-    
-    def _drop_background(self, data):
-
-        indices = []
-        for i, class_label in enumerate(data['dets']['yolo_class']):
-            if class_label != 7:
-                indices.append(i)
-        
-        for item in data['dets']:
-            data['dets'][item] = data['dets'][item][indices]
-
-        return data
 
     def _to_torch_tensor(self, data):
         '''
@@ -131,10 +100,16 @@ class BaseDataset(Dataset):
         data['dets']['size'] = torch.from_numpy(data['dets']['size'])
         data['dets']['yaw'] = torch.from_numpy(data['dets']['yaw'])
         data['dets']['velocity'] = torch.from_numpy(data['dets']['velocity'])
-        data['dets']['class'] = torch.from_numpy(data['dets']['class'])
-        data['dets']['score'] = torch.from_numpy(data['dets']['score'])
         data['dets']['yolo_score'] = torch.from_numpy(data['dets']['yolo_score'])
         data['dets']['yolo_class'] = torch.from_numpy(data['dets']['yolo_class'])
+        # use centerpoint scores for base classes to train regression head
+        data['dets']['score'] = torch.from_numpy(data['dets']['score'])
+
+        # centerpoint class label and score used for base class at test time
+        if 'distance_weights' in data['dets']:
+            data['dets']['distance_weights'] = torch.from_numpy(data['dets']['distance_weights'])
+            data['dets']['class'] = torch.from_numpy(data['dets']['class'])
+            
     
         data['gts']['translation'] = torch.from_numpy(data['gts']['translation'])
         data['gts']['size'] = torch.from_numpy(data['gts']['size'])
@@ -161,47 +136,7 @@ class BaseDataset(Dataset):
                                         data['gts']['yaw']], dim=1).view(-1, 7)
         return data
     
-    def _dets_gt_matching(self, det_box, det_cls, gt_box, gt_cls):
-        '''
-        Assign tracking ID for detection boxes in data preprocessing.
-        '''
-        cls_valid_mask = torch.eq(det_cls.unsqueeze(1), gt_cls.unsqueeze(0))
-
-        if self.iou_matching:
-            # from ops.iou3d import iou3d_nms_utils
-            # iou = iou3d_nms_utils.boxes_iou_bev_cpu(det_box, gt_box)
-            # iou_gpu = iou3d_nms_utils.boxes_iou_bev(det_box.cuda(), gt_box.cuda())
-
-            import iou3d_nms_cuda
-            assert det_box.shape[1] == gt_box.shape[1] == 7
-            iou = torch.FloatTensor(torch.Size((det_box.shape[0], gt_box.shape[0]))).zero_()
-
-            iou3d_nms_cuda.boxes_iou_bev_cpu(det_box.contiguous(), gt_box.contiguous(), iou)
-
-            iou_valid_mask = iou > 0
-            valid_mask = torch.logical_and(cls_valid_mask, iou_valid_mask)
-            invalid_mask = torch.logical_not(valid_mask)
-            cost = - iou + 1e18 * invalid_mask
-        else:
-            center_dist = torch.cdist(det_box[:, :2], gt_box[:, :2], p=2.0)
-            dist_valid_mask = torch.le(center_dist, 2.0)
-            valid_mask = torch.logical_and(cls_valid_mask, dist_valid_mask)
-            invalid_mask = torch.logical_not(valid_mask)
-            cost = center_dist + 1e18 * invalid_mask
-
-        cost[cost > 1e16] = 1e18
-
-        # row_ind: index of detection boxes
-        # col_ind: index of ground truth
-        row_ind, col_ind = linear_sum_assignment(cost)
-
-        matches = []
-        for i, j in zip(row_ind, col_ind):
-            if cost[i, j] < 1e16:
-                matches.append([i, j])
-        
-        return matches
-
+    
     def _dets_gt_matching_class_agnostic(self, det_box, gt_box):
         '''
         Assign tracking ID for detection boxes in data preprocessing.
@@ -260,9 +195,6 @@ class BaseDataset(Dataset):
                 det_box = frame['dets']['box']
                 gt_box = frame['gts']['box']
 
-                #det_cls = frame['dets']['yolo_class']
-                #gt_cls = frame['gts']['class']
-
                 # Avoid tracking id match across batch elements
                 gt_track_id = frame['gts']['tracking_id'] + scene_id * 1000
                 gt_next_exist = frame['gts']['next_exist']
@@ -271,7 +203,6 @@ class BaseDataset(Dataset):
                 gt_next_x = get_next_trans[:, 0]
                 gt_next_y = get_next_trans[:, 1]
 
-                # matches = self._dets_gt_matching(det_box, det_cls, gt_box, gt_cls)
                 matches = self._dets_gt_matching_class_agnostic(det_box, gt_box)
 
                 num_all_gts += frame['num_gts']

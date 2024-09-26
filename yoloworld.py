@@ -49,8 +49,8 @@ if __name__ == "__main__":
         'motorcycle',
         'trailer'])
 
-    dataset_dir = "/l/users/ayesha.ishaq/nuScenes"
-    output_dir =  "/l/users/ayesha.ishaq/3dmotformer/"
+    dataset_dir = "./nuScenes"
+    output_dir =  "./results/"
 
     version_fullname = 'v1.0-trainval'
     nusc = NuScenes(version=version_fullname, dataroot=dataset_dir, verbose=True)

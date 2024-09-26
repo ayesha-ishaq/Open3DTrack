@@ -10,7 +10,6 @@ import torch
 import utils.graph_util as graph_util
 from utils.match_util import dets_tracks_matching
 from utils.data_util import NuScenesClasses, NuScenesClassesBase
-from utils.util import load_clip, extract_clip_feature
 
 def update_field(det_field, track_field, match, new_det, inactive_track,
                  update_with_dets=True):
@@ -19,17 +18,6 @@ def update_field(det_field, track_field, match, new_det, inactive_track,
     else:
         field_mat = track_field[match[:, 0]]
 
-    new_det_field = det_field[new_det]
-    inactive_track_field = track_field[inactive_track]
-
-    new_track_field = torch.cat([field_mat, new_det_field, inactive_track_field], 0)
-    return new_track_field
-
-def update_yolo_class(det_field, track_field, match, new_det, inactive_track):
-
-    unknown_mask = (det_field[match[:, 1]] != 7)
-    field_mat = (det_field[match[:, 1]] * unknown_mask) + (track_field[match[:, 0]] * torch.logical_not(unknown_mask))
-    
     new_det_field = det_field[new_det]
     inactive_track_field = track_field[inactive_track]
 
@@ -63,7 +51,8 @@ class Tracker(object):
                        feature_update_weight=0.5, 
                        embedding_update_weight = 0.5,
                        hungarian=True,
-                       graph_truncation_dist=5.0):
+                       graph_truncation_dist=5.0,
+                       split='rare'):
 
         self.max_age = max_age
         self.active_track_thresh = active_track_thresh
@@ -71,8 +60,7 @@ class Tracker(object):
         self.embedding_update_weight = embedding_update_weight
         self.hungarian = hungarian
         self.graph_truncation_dist = graph_truncation_dist
-
-        # self.clip = load_clip()
+        self.split = split
 
         self._initialized = False
         self.reset()
@@ -114,6 +102,7 @@ class Tracker(object):
         track_score = data.det_score
         track_gt = data.tracking_id
         track_age = torch.ones_like(track_class, dtype=torch.int)
+        track_distance_weights = data.distance_weights
 
         self.track_state = {'features': track_feat,
                             'boxes': track_boxes,
@@ -127,9 +116,7 @@ class Tracker(object):
                             'age': track_age
                             }
 
-        # CHANGE: setting class label from openscene embedding
-        # labelset = NOVEL_LABELS
-        # text_features = extract_clip_feature(labelset, self.clip)
+        
         labels = list(NuScenesClasses.keys()) + ['unknown']
         num_tracks = track_feat.size(0)
         for i in range(num_tracks):
@@ -137,7 +124,7 @@ class Tracker(object):
             rotation = Quaternion(axis=[0, 0, 1], angle=yaw.cpu().numpy())
             class_id = track_class[i]
             class_score = track_score[i].cpu().numpy()
-            base_ids = list(NuScenesClassesBase.values())
+            base_ids = list(NuScenesClassesBase[self.split].values())
             if class_id not in base_ids:
                 class_id = track_yolo_class[i]
                 class_score = track_yolo_score[i].cpu().numpy()
@@ -152,6 +139,7 @@ class Tracker(object):
                 "tracking_score": class_score,
                 "age": 1,
                 "active": 1,
+                "distance_weights": track_distance_weights[i].cpu().numpy()
             }
             self.id_count += 1
             self.track_info.append(track)
@@ -172,6 +160,7 @@ class Tracker(object):
         det_yolo_class = data.det_yolo_class
         det_yolo_score = data.det_yolo_score
         det_gt = data.tracking_id
+        det_distance_weights = data.distance_weights
 
         edge_index_inter = inter_graph.edge_index
         num_tracks = inter_graph.size_s
@@ -196,37 +185,33 @@ class Tracker(object):
                 inactive_trk.append(i)
 
         # update track info
-        self._update_track_info(affinity_dense, match, unmat_det, inactive_trk, det_boxes,
+        self._update_track_info(match, unmat_det, inactive_trk, det_boxes,
                                 det_velo, det_class, det_score, det_score_pred, det_yolo_score,
-                                det_yolo_class)
+                                det_yolo_class, det_distance_weights)
 
         # update track state
         self._update_track_state(match, unmat_det, inactive_trk, track_latent_feat, det_latent_feat,
-                                 det_boxes, pred_velo, det_class, det_yolo_class, det_score, det_yolo_score, det_gt)
+                                 det_boxes, pred_velo, det_class, det_yolo_class, det_gt)
         
         assert len(self.track_info) == self.track_state['features'].size(0)
 
 
-    def _update_track_info(self, affinity, matches, new_dets, inactive_tracks,
+    def _update_track_info(self, matches, new_dets, inactive_tracks,
                            det_boxes, det_velo, det_class, det_score, det_score_pred,
-                           det_yolo_score, det_yolo_class):
+                           det_yolo_score, det_yolo_class, det_distance_weights):
         '''
         Update external information for writing results.
         Generate a dictionary with all neccessary information for nuscenes json format.
         '''
 
-        # CHANGE: setting class label from openscene embedding
         new_track_info = []
-        # labelset = NOVEL_LABELS
-        # text_features = extract_clip_feature(labelset, self.clip)
         labels = list(NuScenesClasses.keys()) + ['unknown']
         for m in matches:
             yaw = det_boxes[m[1], 6]
             rotation = Quaternion(axis=[0, 0, 1], angle=yaw.cpu().numpy())
             class_id = det_class[m[1]]
             class_score = det_score[m[1]].cpu().numpy()
-            class_aff = (affinity[m[0], m[1]]).cpu().numpy()
-            base_ids = list(NuScenesClassesBase.values())
+            base_ids = list(NuScenesClassesBase[self.split].values())
             if class_id not in base_ids:
                 class_id = det_yolo_class[m[1]]
                 class_score = det_score_pred[m[1]].cpu().numpy()
@@ -241,6 +226,7 @@ class Tracker(object):
                 "tracking_score": class_score,
                 "age": 1,
                 "active": self.track_info[m[0]]["active"] + 1,
+                "distance_weights": det_distance_weights[m[1]].cpu().numpy(),
             }
             new_track_info.append(track)
         
@@ -249,7 +235,7 @@ class Tracker(object):
             rotation = Quaternion(axis=[0, 0, 1], angle=yaw.cpu().numpy())
             class_id = det_class[i]
             class_score = det_score[i].cpu().numpy()
-            base_ids = list(NuScenesClassesBase.values())
+            base_ids = list(NuScenesClassesBase[self.split].values())
             if class_id not in base_ids:
                 class_id = det_yolo_class[i]
                 class_score = det_score_pred[i].cpu().numpy()
@@ -264,6 +250,7 @@ class Tracker(object):
                 "tracking_score": class_score,
                 "age": 1,
                 "active": 1,
+                "distance_weights": det_distance_weights[i].cpu().numpy(),
             }
             self.id_count += 1
             new_track_info.append(track)
@@ -278,7 +265,7 @@ class Tracker(object):
         self.track_info = new_track_info
 
     def _update_track_state(self, matches, new_dets, inactive_tracks, track_latent_feat, det_latent_feat, 
-                            det_boxes, pred_velo, det_class, det_yolo_class, det_score, det_score_pred, det_gt):
+                            det_boxes, pred_velo, det_class, det_yolo_class, det_gt):
         '''
         Update internal information for the network.
         This function is very similar to `Trainer._batch_update_tracks` function.
@@ -303,8 +290,8 @@ class Tracker(object):
                                           matches, new_dets, inactive_tracks)
         new_track_class = update_field(det_class, track_class, matches, new_dets,
                                       inactive_tracks, update_with_dets=True)
-        new_track_yolo_class = update_yolo_class(det_yolo_class, track_yolo_class, 
-                                      matches, new_dets, inactive_tracks)
+        new_track_yolo_class = update_field(det_yolo_class, track_yolo_class, matches, new_dets,
+                                      inactive_tracks, update_with_dets=True)
         new_track_gt = update_field(det_gt, track_gt, matches, new_dets,
                                       inactive_tracks, update_with_dets=True)
 
@@ -313,7 +300,7 @@ class Tracker(object):
         new_track_age = torch.cat([det_age, track_age_unmat], 0)
 
         # build graph for new tracks
-        track_adj_new = graph_util.bev_euclidean_distance_adj(new_track_boxes, None, #new_track_yolo_class,
+        track_adj_new = graph_util.bev_euclidean_distance_adj(new_track_boxes, None,
                                                               self.graph_truncation_dist)
         edge_index_track_new = graph_util.adj_to_edge_index(track_adj_new)
 
