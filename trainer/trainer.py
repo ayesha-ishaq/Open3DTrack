@@ -14,7 +14,7 @@ import time
 import torch
 import numpy as np
 from torch_geometric.data import Data, Batch
-from torch_geometric.utils.unbatch import unbatch
+from torch_geometric.utils import unbatch
 
 from base import BaseTrainer
 from utils import inf_loop, MetricTracker

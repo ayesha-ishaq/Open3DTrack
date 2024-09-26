@@ -9,7 +9,7 @@ from copy import deepcopy
 import iou3d_nms_cuda
 
 from torch_geometric.data import Batch
-from torch_geometric.utils.unbatch import unbatch
+from torch_geometric.utils import unbatch
 
 from utils.data_util import BipartiteData, NuScenesClassesBase
 

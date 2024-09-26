@@ -3,7 +3,11 @@
 
 [![arXiv](https://img.shields.io/badge/arXiv-Link-orange)](https://arxiv.org/link-to-your-paper)  
 <!-- ![Project GIF](./img/open3dtrack.gif) -->
-<p align="center"> <img src="./img/open3dtrack.gif" width="800"> </p>
+<!-- <p align="center"> <img src="./img/open3dtrackvid.mp4" width="600"> </p> -->
+<video width="800" controls>
+  <p align="center"><source src="./img/open3dtrackvid.mp4" type="video/mp4"></p>
+  Your browser does not support the video tag.
+</video>
 
 
 ## Abstract
@@ -32,7 +36,7 @@ git clone --recurse-submodules https://github.com/ayesha-ishaq/Open3DTrack
     ```bash
     pip install ultralytics
     conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cuda=11.6 -c pytorch -c nvidia
-    pip install nuscenes-devkit matplotlib pandas motmetrics==1.1.3
+    pip install nuscenes-devkit matplotlib pandas motmetrics==1.2.0
     conda install pyg -c pyg
     pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-1.13.0+cu116.html
     ```
@@ -99,5 +103,11 @@ Set the `$dataset_dir` in `yoloworld.py` to <path_to_nuscenes> `$output_dir` to 
 ##### AMOTA and AMOTP show overall results while only AMOTA results are shown for each class here. Bold values indicate novel classes of that split.
 ---
 
+## Acknowledgements
+We would like to thank the following contributors and organizations for their support and resources:
 
+- **[3DMOTFormer](https://github.com/dsx0511/3DMOTFormer.git)**
+- **[NuScenes](https://www.nuscenes.o]**rg/)** 
+- **[Ultralytics](https://ultralytics.com/)** 
+- All collaborators and contributors who have helped shape this project.
 
