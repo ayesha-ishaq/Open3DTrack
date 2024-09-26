@@ -2,12 +2,14 @@
 # Open3DTrack: Towards Open-Vocabulary 3D Multi-Object Tracking
 
 [![arXiv](https://img.shields.io/badge/arXiv-Link-orange)](https://arxiv.org/link-to-your-paper)  
-![Project GIF](https://link-to-your-project-gif-or-video)
+<!-- ![Project GIF](./img/open3dtrack.gif) -->
+<p align="center"> <img src="./img/open3dtrack.gif" width="800"> </p>
 
----
 
 ## Abstract
 3D multi-object tracking plays a critical role in autonomous driving by enabling the real-time monitoring and prediction of multiple objects’ movements. Traditional 3D tracking systems are typically constrained by predefined object categories, limiting their adaptability to novel, unseen objects in dynamic environments. To address this limitation, we introduce open-vocabulary 3D tracking, which extends the scope of 3D tracking to include objects beyond predefined categories. We formulate the problem of open-vocabulary 3D tracking and introduce dataset splits designed to represent various open-vocabulary scenarios. We propose a novel approach that integrates open-vocabulary capabilities into a 3D tracking framework, allowing for generalization to unseen object classes. Our method effectively reduces the performance gap between tracking known and novel objects through strategic adaptation. Experimental results demonstrate the robustness and adaptability of our method in diverse outdoor driving scenarios. To the best of our knowledge, this work is the first to address open-vocabulary 3D tracking, presenting a significant advancement for autonomous systems in real-world settings.
+
+<p align="center"> <img src="./img/open3dtrack.JPG" width="900"> </p>
 
 ---
 
