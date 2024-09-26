@@ -3,7 +3,7 @@
 
 [![arXiv](https://img.shields.io/badge/arXiv-Link-orange)](https://arxiv.org/link-to-your-paper)  
 <!-- ![Project GIF](./img/open3dtrack.gif) -->
-<p align="center"> <img src="./img/open3dtrack.gif" width="800"> </p>
+<p align="center"> <img src="./img/open3dtrack.gif" width="600"> </p>
 
 
 ## Abstract
@@ -99,5 +99,11 @@ Set the `$dataset_dir` in `yoloworld.py` to <path_to_nuscenes> `$output_dir` to 
 ##### AMOTA and AMOTP show overall results while only AMOTA results are shown for each class here. Bold values indicate novel classes of that split.
 ---
 
+## Acknowledgements
+We would like to thank the following contributors and organizations for their support and resources:
 
+- **[3DMOTFormer](https://github.com/dsx0511/3DMOTFormer.git)**
+- **[NuScenes](https://www.nuscenes.o]**rg/)** 
+- **[Ultralytics](https://ultralytics.com/)** 
+- All collaborators and contributors who have helped shape this project.
 
