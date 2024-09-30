@@ -46,7 +46,7 @@ git clone --recurse-submodules https://github.com/ayesha-ishaq/Open3DTrack
 
 1. **Download NuScenes dataset**: [NuScenes](https://www.nuscenes.org/download) (Keyframes only)
 2. **Generate YOLOWorld Detections**:
-Set the `$dataset_dir` in `yoloworld.py` to <path_to_nuscenes> `$output_dir` to <path_to_save_2D_detections>
+Set the `$dataset_dir` in `yoloworld.py` to <path_to_nuscenes> `$output_dir` to <path_to_yoloworld_detections>
     ```bash
     python yoloworld.py
     ```
@@ -54,7 +54,7 @@ Set the `$dataset_dir` in `yoloworld.py` to <path_to_nuscenes> `$output_dir` to 
 3. **3D Detector Detections**:
    - [CenterPoint Detection](https://mitprod-my.sharepoint.com/:f:/g/personal/tianweiy_mit_edu/Eip_tOTYSk5JhdVtVzlXlyABDPnGx9vsnwdo5SRK7bsh8w?e=vSdija)
    - [Megvii Detection](https://www.nuscenes.org/data/detection-megvii.zip)
-   - [BEVFusion Detection](https://github.com/mit-han-lab/bevfusion) (To obtain BEVFusion results, you must install BEVFusion and run inference. Alternatively you can use BEVFusion from [mmdetection3d](https://github.com/open-mmlab/mmdetection3d/tree/main/projects/BEVFusion))
+   - [BEVFusion Detection](https://github.com/mit-han-lab/bevfusion) (To obtain BEVFusion results, you must install BEVFusion and run inference. Alternatively, you can use BEVFusion from [mmdetection3d](https://github.com/open-mmlab/mmdetection3d/tree/main/projects/BEVFusion))
      
 Rename the files as `train.json` and `val.json` and save them at <path_to_3D_detections>
 
