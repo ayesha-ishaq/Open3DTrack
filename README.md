@@ -57,6 +57,8 @@ Set the `$dataset_dir` in `yoloworld.py` to <path_to_nuscenes> `$output_dir` to 
    - [BEVFusion Detection](https://github.com/mit-han-lab/bevfusion) (To obtain BEVFusion results, you must install BEVFusion and run inference. Alternatively you can use BEVFusion from [mmdetection3d](https://github.com/open-mmlab/mmdetection3d/tree/main/projects/BEVFusion))
      
 Rename the files as `train.json` and `val.json` and save them at <path_to_3D_detections>
+
+
 4. **Generate Split Data**:
     To preprocess 3D and 2D detections and obtain data for 3D tracker run: 
     Split scenarios are as proposed in the paper: *rare*, *urban*, and *diverse*. Set <split_name> to one of these.
