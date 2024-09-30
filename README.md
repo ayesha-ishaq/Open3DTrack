@@ -3,11 +3,7 @@
 
 [![arXiv](https://img.shields.io/badge/arXiv-Link-orange)](https://arxiv.org/link-to-your-paper)  
 <!-- ![Project GIF](./img/open3dtrack.gif) -->
-<!-- <p align="center"> <img src="./img/open3dtrackvid.mp4" width="600"> </p> -->
-<video width="800" controls>
-  <p align="center"><source src="./img/open3dtrackvid.mp4" type="video/mp4"></p>
-  Your browser does not support the video tag.
-</video>
+<p align="center"> <img src="./img/open3dtrackvid.gif" width="600"> </p>
 
 
 ## Abstract
