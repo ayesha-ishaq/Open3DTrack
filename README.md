@@ -94,12 +94,12 @@ Rename the files as `train.json` and `val.json` and save them at <path_to_3D_det
 
 | Split | AMOTA | AMOTP | Bicycle | Bus  | Car  | Motorcycle | Pedestrian | Trailer | Truck | Checkpoint|
 |-------|-------|-------|---------|------|------|------------|------------|---------|-------|-------|
-| Rare  | 0.578 | 0.783 | **0.445**   |**0.612**| 0.779| **0.469**      | 0.752      | 0.477   | 0.511 | [weights]()
-| Urban | 0.590 | 0.677 | **0.400**   | **0.683**| 0.788| 0.702      | **0.548**      | 0.488   | 0.522 | [weights]()
-| Diverse | 0.536| 0.804 | 0.524   | 0.770| 0.708| **0.438**      | **0.564**      | 0.470   | **0.276** |[weights]()
+| Rare  | 0.578 | 0.783 | **0.445**   |**0.612**| 0.779| **0.469**      | 0.752      | 0.477   | 0.511 | [weights](https://huggingface.co/ayeshaishaq/Open3DTrack/resolve/main/BBM_Rare.pth?download=true)
+| Urban | 0.590 | 0.677 | **0.400**   | **0.683**| 0.788| 0.702      | **0.548**      | 0.488   | 0.522 | [weights](https://huggingface.co/ayeshaishaq/Open3DTrack/resolve/main/PBB_Urban.pth?download=true)
+| Diverse | 0.536| 0.804 | 0.524   | 0.770| 0.708| **0.438**      | **0.564**      | 0.470   | **0.276** |[weights](https://huggingface.co/ayeshaishaq/Open3DTrack/resolve/main/PTM_Diverse.pth?download=true)
 | **UpperBound** (3DMOTFormer) | 0.710 | 0.521 | 0.545 | 0.853 | 0.838 | 0.723 | 0.812 | 0.509 | 0.690 |
 
-##### AMOTA and AMOTP show overall results while only AMOTA results are shown for each class here. Bold values indicate novel classes of that split.
+##### AMOTA and AMOTP show overall results, while only AMOTA results are shown for each class here. Bold values indicate novel classes of that split.
 ---
 
 ## Acknowledgements
