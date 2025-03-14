@@ -1,7 +1,9 @@
 
 # Open3DTrack: Towards Open-Vocabulary 3D Multi-Object Tracking
 
-[![arXiv](https://img.shields.io/badge/arXiv-Link-orange)](https://arxiv.org/abs/2410.01678)  
+[![arXiv](https://img.shields.io/badge/arXiv-Link-orange)](https://arxiv.org/abs/2410.01678) 
+
+🚀 Paper Accepted to ICRA 2025! 🎉
 <!-- ![Project GIF](./img/open3dtrack.gif) -->
 <p align="center"> <img src="./img/open3dtrackvid.gif" width="600"> </p>
 
